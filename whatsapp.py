@@ -626,8 +626,8 @@ Format like this:
 """
             
             # PERFORMANCE: Run LLM call with timeout
-            response = await asyncio.wait_for(
-                openai.chat.completions.create(
+            def llm_summarize():
+                return openai.chat.completions.create(
                     model="gpt-4",
                     messages=[
                         {"role": "system", "content": "You are an expert at summarizing web search results for mobile messaging. Keep responses concise, informative, and under 1500 characters."},
@@ -635,7 +635,10 @@ Format like this:
                     ],
                     max_tokens=500,
                     temperature=0.3
-                ),
+                )
+            
+            response = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(thread_pool, llm_summarize),
                 timeout=15.0  # 15 second timeout for LLM
             )
             
@@ -912,15 +915,18 @@ async def extract_email_info_with_llm_optimized(user_input: str, whatsapp_number
         memory_context_task = asyncio.create_task(get_memory_context())
     
     try:
-        # PERFORMANCE: Run LLM extraction with timeout
-        llm_task = asyncio.create_task(
-            openai.chat.completions.create(
+        # PERFORMANCE: Run LLM extraction with timeout - FIX: Run in thread pool since OpenAI client is sync
+        def llm_call():
+            return openai.chat.completions.create(
                 model="gpt-4",
                 messages=[
                     {"role": "system", "content": "You extract structured email instructions and generate professional emails signed as Rahul Menon. Use the provided memory context to personalize responses based on user preferences and past interactions."},
                     {"role": "user", "content": enhanced_prompt}
                 ]
             )
+        
+        llm_task = asyncio.create_task(
+            asyncio.get_event_loop().run_in_executor(thread_pool, llm_call)
         )
         
         # Wait for both tasks with timeout
@@ -1273,13 +1279,16 @@ Respond ONLY in this JSON format:
 }}
 """
         
-        response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are an expert email writer who revises emails based on user feedback. Always maintain professionalism and sign as Rahul Menon."},
-                {"role": "user", "content": prompt}
-            ]
-        )
+        def llm_revise():
+            return openai.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert email writer who revises emails based on user feedback. Always maintain professionalism and sign as Rahul Menon."},
+                    {"role": "user", "content": prompt}
+                ]
+            )
+        
+        response = await asyncio.get_event_loop().run_in_executor(thread_pool, llm_revise)
         
         content = response.choices[0].message.content
         revised_data = json.loads(content)
