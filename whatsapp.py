@@ -819,7 +819,7 @@ You are a helpful assistant that extracts structured info from user messages for
 CURRENT DATE CONTEXT: Today is {current_date_str} ({current_date.strftime('%A, %B %d, %Y')})
 
 Extract:
-- intent ("send_email" for sending emails; "add_contact" for adding new contacts; "lookup_contact" for finding contact info; "list_contacts" for showing all contacts; "update_contact" for modifying existing contacts; "delete_contact" for removing contacts; "calendar_auth" for calendar authentication; "calendar_create" for creating events; "calendar_list" for listing events; "calendar_update" for updating events; "calendar_delete" for deleting events; "find_place" for finding places using Google Places API; "place_details" for getting specific details about a known place like Google Maps link, address, phone number; "web_search" for general web search queries; "memory_query" for asking about past actions or conversations; otherwise "other")
+- intent ("send_email" for sending emails; "add_contact" for adding new contacts; "lookup_contact" for finding contact info; "list_contacts" for showing all contacts; "update_contact" for modifying existing contacts; "delete_contact" for removing contacts; "calendar_auth" for calendar authentication; "calendar_create" for creating single events; "calendar_bulk_create" for creating multiple events; "calendar_list" for listing events; "calendar_update" for updating events; "calendar_delete" for deleting single events; "calendar_bulk_delete" for deleting multiple events; "find_place" for finding places using Google Places API; "place_details" for getting specific details about a known place like Google Maps link, address, phone number; "web_search" for general web search queries; "memory_query" for asking about past actions or conversations; otherwise "other")
 - recipient_email (the email address to send to, if explicitly mentioned)
 - recipient_name (the person's full name if no email is provided)
 - subject (a polished, professional subject line based on the message content)
@@ -838,6 +838,8 @@ Extract:
 - calendar_event_id (event ID for updating/deleting calendar events)
 - calendar_field (field to update: "summary", "description", "start", "end")
 - calendar_value (new value for calendar field updates)
+- calendar_events (for bulk creation: array of event objects with summary, start, end, description)
+- calendar_delete_targets (for bulk deletion: array of event identifiers - can be event IDs, titles, or dates)
 - place_query (the user's location search string for Google Places OR the specific place name when asking for details)
 - place_location (optional: a lat,lng string if user gives coordinates or "near me", else null)
 - place_detail_type (what specific detail is requested: "maps_link", "address", "phone", "hours", "website", or "all")
@@ -846,6 +848,17 @@ Extract:
 
 User said:
 """{user_input}"""
+
+Examples of calendar_bulk_create intent:
+- "Create three meetings: Team standup tomorrow 9am, Client call Friday 2pm, and Review session next Monday 10am" → calendar_bulk_create (calendar_events: [{"summary": "Team standup", "start": "...", "end": "..."}, {"summary": "Client call", "start": "...", "end": "..."}, {"summary": "Review session", "start": "...", "end": "..."}])
+- "Schedule multiple events: Lunch with John today 1pm, Gym session tomorrow 6pm, and Doctor appointment Thursday 3pm" → calendar_bulk_create
+- "Add these meetings to my calendar: Project kickoff Monday 10am to 11am, Budget review Tuesday 2pm to 3pm" → calendar_bulk_create
+
+Examples of calendar_bulk_delete intent:
+- "Delete my meetings for today and tomorrow" → calendar_bulk_delete (calendar_delete_targets: ["{current_date_str}", "{(current_date + timedelta(days=1)).strftime('%Y-%m-%d')}"])
+- "Remove these events: Team standup, Client call, and Budget review" → calendar_bulk_delete (calendar_delete_targets: ["Team standup", "Client call", "Budget review"])
+- "Delete events with IDs abc123, def456, and ghi789" → calendar_bulk_delete (calendar_delete_targets: ["abc123", "def456", "ghi789"])
+- "Cancel all my meetings this week" → calendar_bulk_delete (calendar_delete_targets: ["this week"])
 
 Examples of place_details intent (asking for specific info about a known place):
 - "Can I get the Google Maps location for Padel Pro Jumeirah Park?" → place_details (place_query: "Padel Pro Jumeirah Park", place_detail_type: "maps_link")
@@ -919,7 +932,7 @@ Examples of list_contacts intent:
 
 Respond ONLY in this JSON format:
 {{
-  "intent": "send_email" or "add_contact" or "lookup_contact" or "list_contacts" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "find_place" or "place_details" or "web_search" or "memory_query" or "other",
+  "intent": "send_email" or "add_contact" or "lookup_contact" or "list_contacts" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_bulk_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "calendar_bulk_delete" or "find_place" or "place_details" or "web_search" or "memory_query" or "other",
   "recipient_email": "...",
   "recipient_name": "...",
   "subject": "...",
@@ -938,6 +951,8 @@ Respond ONLY in this JSON format:
   "calendar_event_id": "...",
   "calendar_field": "...",
   "calendar_value": "...",
+  "calendar_events": [...],
+  "calendar_delete_targets": [...],
   "place_query": "...",
   "place_location": "...",
   "place_detail_type": "...",
@@ -1601,6 +1616,12 @@ async def process_message_background_optimized(from_number: str, body: str, num_
         elif data and data.get("intent") == "calendar_delete":
             await handle_calendar_delete_intent_optimized(data, from_number)
             return
+        elif data and data.get("intent") == "calendar_bulk_create":
+            await handle_calendar_bulk_create_intent_optimized(data, from_number)
+            return
+        elif data and data.get("intent") == "calendar_bulk_delete":
+            await handle_calendar_bulk_delete_intent_optimized(data, from_number)
+            return
         elif data and data.get("intent") in ["find_place", "place_details"]:
             await handle_place_intent_optimized(data, from_number)
             return
@@ -1616,7 +1637,7 @@ async def process_message_background_optimized(from_number: str, body: str, num_
         # ... other intents would be handled similarly
         
         # Default response for unhandled intents
-        reply = f"Hi! You said: {body}\n\nI can help you:\n📧 Send emails\n👤 Add/update/delete contacts\n📋 List all contacts\n🔍 Look up contact info\n📅 Manage your calendar\n🗺️ Find places nearby\n🔍 Search the web for information\n\nContact commands:\n• 'show all contacts' - List all your contacts\n• 'lookup [name]' - Find specific contact info\n• 'add contact [name], [email], [phone]' - Add new contact\n\nCalendar commands:\n• 'setup my calendar' - Connect Google Calendar\n• 'create meeting tomorrow 2pm to 3pm' - Create events\n• 'list my events' - Show upcoming events\n\nPlace search:\n• 'Find best pizza in Downtown Dubai'\n• 'What are the top sushi spots near me?'\n\nWeb search:\n• 'What is the latest in EV technology?'\n• 'How to write a resignation email?'"
+        reply = f"Hi! You said: {body}\n\nI can help you:\n📧 Send emails\n👤 Add/update/delete contacts\n📋 List all contacts\n🔍 Look up contact info\n📅 Manage your calendar\n🗺️ Find places nearby\n🔍 Search the web for information\n\nContact commands:\n• 'show all contacts' - List all your contacts\n• 'lookup [name]' - Find specific contact info\n• 'add contact [name], [email], [phone]' - Add new contact\n\nCalendar commands:\n• 'setup my calendar' - Connect Google Calendar\n• 'create meeting tomorrow 2pm to 3pm' - Create single events\n• 'create multiple meetings: Team standup tomorrow 9am, Client call Friday 2pm' - Create multiple events\n• 'list my events' - Show upcoming events\n• 'delete my meeting today' - Delete single event\n• 'delete my meetings for today and tomorrow' - Delete multiple events\n\nPlace search:\n• 'Find best pizza in Downtown Dubai'\n• 'What are the top sushi spots near me?'\n\nWeb search:\n• 'What is the latest in EV technology?'\n• 'How to write a resignation email?'"
         await send_whatsapp_message(from_number, reply)
             
     except Exception as e:
@@ -2401,6 +2422,398 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
     else:
         await send_whatsapp_message(from_number, "Please specify which event to delete (by title, date, or event ID).")
 
+async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle bulk calendar event creation with error handling and summary"""
+    calendar_events = data.get("calendar_events", [])
+    
+    if not calendar_events:
+        await send_whatsapp_message(from_number, "❌ No events provided for bulk creation. Please specify the events you want to create.")
+        return
+    
+    try:
+        # Try to get Google Calendar service
+        try:
+            service = get_calendar_service()
+            
+            # Track results
+            created_events = []
+            failed_events = []
+            
+            # Process each event
+            for i, event_data in enumerate(calendar_events):
+                try:
+                    summary = event_data.get("summary", f"Event {i+1}")
+                    start_time = event_data.get("start")
+                    end_time = event_data.get("end")
+                    description = event_data.get("description")
+                    
+                    if not start_time:
+                        failed_events.append({
+                            "summary": summary,
+                            "error": "Missing start time"
+                        })
+                        continue
+                    
+                    # If no end time provided, default to 1 hour later
+                    if not end_time:
+                        try:
+                            start_dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                            end_dt = start_dt + timedelta(hours=1)
+                            end_time = end_dt.isoformat()
+                        except:
+                            end_time = start_time  # Fallback to same time
+                    
+                    # Create event body
+                    event_body = {
+                        'summary': summary,
+                        'start': format_datetime_for_google(start_time),
+                        'end': format_datetime_for_google(end_time),
+                    }
+                    
+                    if description:
+                        event_body['description'] = description
+                    
+                    # Create event in Google Calendar
+                    event = await asyncio.get_event_loop().run_in_executor(
+                        thread_pool, 
+                        lambda: service.events().insert(calendarId='primary', body=event_body).execute()
+                    )
+                    
+                    created_events.append({
+                        "summary": summary,
+                        "start": start_time,
+                        "end": end_time,
+                        "event_id": event.get('id'),
+                        "event_link": event.get('htmlLink', 'No link available')
+                    })
+                    
+                except Exception as event_error:
+                    print(f"Error creating event {summary}: {event_error}")
+                    failed_events.append({
+                        "summary": summary,
+                        "error": str(event_error)
+                    })
+            
+            # Generate summary report
+            reply = f"📅 **Bulk Calendar Creation Summary**\n\n"
+            
+            if created_events:
+                reply += f"✅ **Successfully Created ({len(created_events)} events):**\n"
+                for event in created_events:
+                    reply += f"📋 {event['summary']}\n"
+                    reply += f"   🕐 {event['start']} → {event['end']}\n"
+                    reply += f"   🆔 {event['event_id']}\n\n"
+            
+            if failed_events:
+                reply += f"❌ **Failed to Create ({len(failed_events)} events):**\n"
+                for event in failed_events:
+                    reply += f"📋 {event['summary']}\n"
+                    reply += f"   ⚠️ Error: {event['error']}\n\n"
+            
+            # Add overall summary
+            total_events = len(calendar_events)
+            success_count = len(created_events)
+            failure_count = len(failed_events)
+            
+            reply += f"📊 **Overall Results:**\n"
+            reply += f"• Total requested: {total_events}\n"
+            reply += f"• Successfully created: {success_count}\n"
+            reply += f"• Failed: {failure_count}\n\n"
+            
+            if success_count > 0:
+                reply += "🎉 Events have been added to your Google Calendar!"
+            
+        except Exception as calendar_error:
+            print(f"Google Calendar API error: {calendar_error}")
+            # Check if it's an authentication error
+            if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
+                reply = (
+                    f"📅 **Calendar Authentication Required**\n\n"
+                    f"I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
+                    f"**Events to create ({len(calendar_events)}):**\n"
+                )
+                for event in calendar_events:
+                    reply += f"📋 {event.get('summary', 'Untitled')}\n"
+                
+                reply += f"\n💡 **Solution:** Use 'setup my calendar' to check authentication status."
+            elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
+                reply = (
+                    f"📅 **Calendar Permissions Missing**\n\n"
+                    f"Your Google token doesn't include calendar permissions.\n\n"
+                    f"💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
+                )
+            else:
+                reply = (
+                    f"❌ **Error creating calendar events**\n\n"
+                    f"There was an issue with Google Calendar API:\n"
+                    f"{str(calendar_error)}\n\n"
+                    f"Please try again or contact support."
+                )
+        
+        await send_whatsapp_message(from_number, reply)
+        
+    except Exception as e:
+        print(f"Calendar bulk create error: {e}")
+        await send_whatsapp_message(from_number, "❌ Error creating calendar events. Please try again.")
+
+async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle bulk calendar event deletion with error handling and summary"""
+    delete_targets = data.get("calendar_delete_targets", [])
+    
+    if not delete_targets:
+        await send_whatsapp_message(from_number, "❌ No events specified for deletion. Please specify which events to delete.")
+        return
+    
+    try:
+        # Try to get Google Calendar service
+        try:
+            service = get_calendar_service()
+            
+            # Track results
+            deleted_events = []
+            failed_deletions = []
+            
+            # Get events for searching (expand time range for bulk operations)
+            now = datetime.now(DUBAI_TZ)
+            past = now - timedelta(days=7)  # Look back 7 days
+            future = now + timedelta(days=30)  # Look ahead 30 days
+            time_min = past.isoformat()
+            time_max = future.isoformat()
+            
+            events_result = await asyncio.get_event_loop().run_in_executor(
+                thread_pool,
+                lambda: service.events().list(
+                    calendarId='primary',
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=100,
+                    singleEvents=True,
+                    orderBy='startTime'
+                ).execute()
+            )
+            
+            all_events = events_result.get('items', [])
+            
+            # Process each deletion target
+            for target in delete_targets:
+                try:
+                    target_str = str(target).strip()
+                    events_to_delete = []
+                    
+                    # Check if target is an event ID (typically long alphanumeric string)
+                    if len(target_str) > 20 and target_str.replace('_', '').replace('-', '').isalnum():
+                        # Likely an event ID - try direct deletion
+                        try:
+                            await asyncio.get_event_loop().run_in_executor(
+                                thread_pool,
+                                lambda: service.events().delete(calendarId='primary', eventId=target_str).execute()
+                            )
+                            deleted_events.append({
+                                "identifier": target_str,
+                                "title": "Event (by ID)",
+                                "event_id": target_str
+                            })
+                            continue
+                        except:
+                            # If direct deletion fails, treat as search term
+                            pass
+                    
+                    # Handle date-based deletion
+                    if any(date_keyword in target_str.lower() for date_keyword in ["today", "tomorrow", "this week", "next week"]) or \
+                       any(char.isdigit() for char in target_str):
+                        
+                        # Parse date ranges
+                        if "this week" in target_str.lower():
+                            # Get start and end of current week
+                            start_of_week = now - timedelta(days=now.weekday())
+                            end_of_week = start_of_week + timedelta(days=6)
+                            start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+                            end_of_week = end_of_week.replace(hour=23, minute=59, second=59, microsecond=999999)
+                            
+                            for event in all_events:
+                                event_start = event['start'].get('dateTime', event['start'].get('date'))
+                                try:
+                                    if 'T' in event_start:
+                                        event_dt = datetime.fromisoformat(event_start.replace('Z', '+00:00'))
+                                    else:
+                                        event_dt = datetime.fromisoformat(event_start).replace(tzinfo=DUBAI_TZ)
+                                    
+                                    if start_of_week <= event_dt <= end_of_week:
+                                        events_to_delete.append(event)
+                                except:
+                                    continue
+                        
+                        elif "today" in target_str.lower() or target_str == now.strftime('%Y-%m-%d'):
+                            # Get events for today
+                            start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                            end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+                            
+                            for event in all_events:
+                                event_start = event['start'].get('dateTime', event['start'].get('date'))
+                                try:
+                                    if 'T' in event_start:
+                                        event_dt = datetime.fromisoformat(event_start.replace('Z', '+00:00'))
+                                    else:
+                                        event_dt = datetime.fromisoformat(event_start).replace(tzinfo=DUBAI_TZ)
+                                    
+                                    if start_of_day <= event_dt <= end_of_day:
+                                        events_to_delete.append(event)
+                                except:
+                                    continue
+                        
+                        elif "tomorrow" in target_str.lower() or target_str == (now + timedelta(days=1)).strftime('%Y-%m-%d'):
+                            # Get events for tomorrow
+                            tomorrow = now + timedelta(days=1)
+                            start_of_day = tomorrow.replace(hour=0, minute=0, second=0, microsecond=0)
+                            end_of_day = tomorrow.replace(hour=23, minute=59, second=59, microsecond=999999)
+                            
+                            for event in all_events:
+                                event_start = event['start'].get('dateTime', event['start'].get('date'))
+                                try:
+                                    if 'T' in event_start:
+                                        event_dt = datetime.fromisoformat(event_start.replace('Z', '+00:00'))
+                                    else:
+                                        event_dt = datetime.fromisoformat(event_start).replace(tzinfo=DUBAI_TZ)
+                                    
+                                    if start_of_day <= event_dt <= end_of_day:
+                                        events_to_delete.append(event)
+                                except:
+                                    continue
+                        
+                        else:
+                            # Try to parse as specific date
+                            try:
+                                target_date = datetime.fromisoformat(target_str.replace('Z', '+00:00'))
+                                if target_date.tzinfo is None:
+                                    target_date = target_date.replace(tzinfo=DUBAI_TZ)
+                                
+                                start_of_day = target_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                                end_of_day = target_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                                
+                                for event in all_events:
+                                    event_start = event['start'].get('dateTime', event['start'].get('date'))
+                                    try:
+                                        if 'T' in event_start:
+                                            event_dt = datetime.fromisoformat(event_start.replace('Z', '+00:00'))
+                                        else:
+                                            event_dt = datetime.fromisoformat(event_start).replace(tzinfo=DUBAI_TZ)
+                                        
+                                        if start_of_day <= event_dt <= end_of_day:
+                                            events_to_delete.append(event)
+                                    except:
+                                        continue
+                            except:
+                                # If date parsing fails, treat as title search
+                                pass
+                    
+                    # If no events found by date, search by title
+                    if not events_to_delete:
+                        for event in all_events:
+                            event_summary = event.get('summary', '').lower()
+                            if target_str.lower() in event_summary:
+                                events_to_delete.append(event)
+                    
+                    # Delete found events
+                    if events_to_delete:
+                        for event in events_to_delete:
+                            try:
+                                event_id = event.get('id')
+                                event_title = event.get('summary', 'Untitled Event')
+                                
+                                await asyncio.get_event_loop().run_in_executor(
+                                    thread_pool,
+                                    lambda: service.events().delete(calendarId='primary', eventId=event_id).execute()
+                                )
+                                
+                                deleted_events.append({
+                                    "identifier": target_str,
+                                    "title": event_title,
+                                    "event_id": event_id
+                                })
+                                
+                            except Exception as delete_error:
+                                failed_deletions.append({
+                                    "identifier": target_str,
+                                    "title": event.get('summary', 'Untitled Event'),
+                                    "error": str(delete_error)
+                                })
+                    else:
+                        failed_deletions.append({
+                            "identifier": target_str,
+                            "title": "Not found",
+                            "error": f"No events found matching '{target_str}'"
+                        })
+                        
+                except Exception as target_error:
+                    print(f"Error processing deletion target {target}: {target_error}")
+                    failed_deletions.append({
+                        "identifier": str(target),
+                        "title": "Processing error",
+                        "error": str(target_error)
+                    })
+            
+            # Generate summary report
+            reply = f"📅 **Bulk Calendar Deletion Summary**\n\n"
+            
+            if deleted_events:
+                reply += f"✅ **Successfully Deleted ({len(deleted_events)} events):**\n"
+                for event in deleted_events:
+                    reply += f"🗑️ {event['title']}\n"
+                    reply += f"   🔍 Matched: {event['identifier']}\n"
+                    reply += f"   🆔 ID: {event['event_id']}\n\n"
+            
+            if failed_deletions:
+                reply += f"❌ **Failed to Delete ({len(failed_deletions)} targets):**\n"
+                for failure in failed_deletions:
+                    reply += f"🔍 {failure['identifier']}\n"
+                    reply += f"   ⚠️ Error: {failure['error']}\n\n"
+            
+            # Add overall summary
+            total_targets = len(delete_targets)
+            success_count = len(deleted_events)
+            failure_count = len(failed_deletions)
+            
+            reply += f"📊 **Overall Results:**\n"
+            reply += f"• Total targets: {total_targets}\n"
+            reply += f"• Successfully deleted: {success_count}\n"
+            reply += f"• Failed: {failure_count}\n\n"
+            
+            if success_count > 0:
+                reply += "🎉 Events have been removed from your Google Calendar!"
+            
+        except Exception as calendar_error:
+            print(f"Google Calendar API error: {calendar_error}")
+            # Check if it's an authentication error
+            if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
+                reply = (
+                    f"📅 **Calendar Authentication Required**\n\n"
+                    f"I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
+                    f"**Events to delete ({len(delete_targets)}):**\n"
+                )
+                for target in delete_targets:
+                    reply += f"🗑️ {target}\n"
+                
+                reply += f"\n💡 **Solution:** Use 'setup my calendar' to check authentication status."
+            elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
+                reply = (
+                    f"📅 **Calendar Permissions Missing**\n\n"
+                    f"Your Google token doesn't include calendar permissions.\n\n"
+                    f"💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
+                )
+            else:
+                reply = (
+                    f"❌ **Error deleting calendar events**\n\n"
+                    f"There was an issue with Google Calendar API:\n"
+                    f"{str(calendar_error)}\n\n"
+                    f"Please try again or contact support."
+                )
+        
+        await send_whatsapp_message(from_number, reply)
+        
+    except Exception as e:
+        print(f"Calendar bulk delete error: {e}")
+        await send_whatsapp_message(from_number, "❌ Error deleting calendar events. Please try again.")
+
 async def handle_list_contacts_intent_optimized(data: dict, from_number: str):
     """OPTIMIZED: Handle list all contacts intent with caching"""
     try:
@@ -2600,7 +3013,7 @@ async def update_calendar_event(
             eventId=event_id,
             body=event
         ).execute()
-        
+
         event_link = updated_event.get('htmlLink', 'No link available')
         
         return {
