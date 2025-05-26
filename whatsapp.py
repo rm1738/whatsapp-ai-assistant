@@ -370,15 +370,17 @@ async def find_places(query: str, location: str = None, radius: int = 5000) -> L
     if not api_key:
         raise RuntimeError("GOOGLE_PLACES_API_KEY not set in environment.")
     
+    # Combine query with location for better results
+    search_query = query
+    if location and location.lower() not in ["near me", "null", "none", ""]:
+        search_query = f"{query} in {location}"
+    
     url = "https://maps.googleapis.com/maps/api/place/textsearch/json"
     params = {
-        "query": query,
+        "query": search_query,
         "key": api_key,
         "radius": radius
     }
-    
-    if location:
-        params["location"] = location
     
     async with httpx.AsyncClient() as client:
         resp = await client.get(url, params=params)
