@@ -58,7 +58,10 @@ except Exception as e:
     memory_manager = None
 
 # Google Calendar Configuration
-SCOPES = ['https://www.googleapis.com/auth/calendar']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets',
+    'https://www.googleapis.com/auth/calendar'
+]
 REDIRECT_URI = "https://a5d5-2001-8f8-1b69-5a-3918-347f-d5c6-f162.ngrok-free.app/oauth2callback"  # Update with your domain
 CREDENTIALS_FILE = "credentials.json"
 DUBAI_TZ = timezone(timedelta(hours=4))  # Asia/Dubai timezone
@@ -70,53 +73,107 @@ GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 TAVILY_API_URL = "https://api.tavily.com/search"
 
-def get_calendar_service(whatsapp_number: str):
-    """Get authenticated Google Calendar service for user using same method as Sheets"""
+def get_calendar_service(whatsapp_number: str = None):
+    """Get authenticated Google Calendar service using the same method as Sheets"""
     try:
-        # Ensure credentials are available
+        # Use the same authentication approach as Google Sheets
         if not setup_google_credentials():
             raise Exception("Google credentials not available")
         
-        # Use the same OAuth approach as Google Sheets but with calendar scope
-        import gspread
-        from google.auth.transport.requests import Request
-        from google.oauth2.credentials import Credentials
-        from google_auth_oauthlib.flow import InstalledAppFlow
-        import os
-        
-        # Calendar scope
-        SCOPES = ['https://www.googleapis.com/auth/calendar']
-        
-        creds = None
-        token_file = f"calendar_token_{whatsapp_number}.json"
-        
-        # Check if we have stored credentials
-        if os.path.exists(token_file):
-            creds = Credentials.from_authorized_user_file(token_file, SCOPES)
-        
-        # If there are no (valid) credentials available, let the user log in
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                if not os.path.exists("credentials.json"):
-                    raise Exception("credentials.json file not found")
-                
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    "credentials.json", SCOPES)
-                creds = flow.run_local_server(port=0)
+        # Check if we have credentials.json file
+        if os.path.exists("credentials.json"):
+            # Check if we're using service account credentials
+            import json
+            with open("credentials.json", "r") as f:
+                creds_data = json.load(f)
             
-            # Save the credentials for the next run
-            with open(token_file, 'w') as token:
-                token.write(creds.to_json())
-        
-        # Build calendar service
-        service = build('calendar', 'v3', credentials=creds)
-        return service
+            if "type" in creds_data and creds_data["type"] == "service_account":
+                # Use service account authentication
+                gc = gspread.service_account(filename="credentials.json")
+                # For service accounts, we need to build the calendar service directly
+                from google.oauth2 import service_account
+                credentials = service_account.Credentials.from_service_account_file(
+                    "credentials.json", scopes=SCOPES
+                )
+                service = build('calendar', 'v3', credentials=credentials)
+                return service
+            else:
+                # Use OAuth2 authentication - same as sheets
+                try:
+                    from google.oauth2.credentials import Credentials
+                    from google.auth.transport.requests import Request
+                    
+                    # Check if we have a token file
+                    if os.path.exists("combined_token.json"):
+                        creds = Credentials.from_authorized_user_file("combined_token.json", SCOPES)
+                        
+                        # Check if token is expired and try to refresh
+                        if creds and creds.expired and creds.refresh_token:
+                            print("🔄 Calendar token expired, attempting to refresh...")
+                            try:
+                                creds.refresh(Request())
+                                print("✅ Calendar token refreshed successfully")
+                                
+                                # Save the refreshed token back to file
+                                with open("combined_token.json", 'w') as token_file:
+                                    token_file.write(creds.to_json())
+                                
+                            except Exception as refresh_error:
+                                print(f"❌ Calendar token refresh failed: {refresh_error}")
+                                raise Exception("Calendar token expired and cannot be refreshed")
+                        
+                        if creds and creds.valid:
+                            service = build('calendar', 'v3', credentials=creds)
+                            print("✅ Using OAuth token for calendar authentication")
+                            return service
+                        else:
+                            raise Exception("Calendar OAuth token is not valid")
+                    else:
+                        raise Exception("No OAuth token file found for calendar")
+                        
+                except Exception as token_error:
+                    print(f"❌ Calendar token authentication failed: {token_error}")
+                    raise Exception(f"Calendar authentication failed: {token_error}")
+        else:
+            # No credentials.json, try to use token file directly
+            try:
+                from google.oauth2.credentials import Credentials
+                from google.auth.transport.requests import Request
+                
+                if os.path.exists("combined_token.json"):
+                    creds = Credentials.from_authorized_user_file("combined_token.json", SCOPES)
+                    
+                    # Try to refresh the token if it's expired
+                    if creds and creds.expired and creds.refresh_token:
+                        print("🔄 Calendar token expired, attempting to refresh...")
+                        try:
+                            creds.refresh(Request())
+                            print("✅ Calendar token refreshed successfully")
+                            
+                            # Save the refreshed token back to file
+                            with open("combined_token.json", 'w') as token_file:
+                                token_file.write(creds.to_json())
+                                
+                        except Exception as refresh_error:
+                            print(f"❌ Calendar token refresh failed: {refresh_error}")
+                            raise Exception("Calendar token expired and cannot be refreshed")
+                    
+                    if creds and creds.valid:
+                        service = build('calendar', 'v3', credentials=creds)
+                        print("✅ Using OAuth token for calendar authentication")
+                        return service
+                    else:
+                        raise Exception("Calendar OAuth token is not valid")
+                else:
+                    raise Exception("No OAuth token file found for calendar")
+                    
+            except Exception as token_error:
+                print(f"❌ Calendar token authentication failed: {token_error}")
+                raise Exception(f"Calendar authentication failed: {token_error}")
         
     except Exception as e:
         print(f"Calendar service error: {e}")
-        raise HTTPException(status_code=401, detail=f"Calendar authorization required. Error: {str(e)}")
+        raise Exception(f"Calendar authentication required: {str(e)}")
 
 def format_datetime_for_google(dt_str: str, is_all_day: bool = False) -> dict:
     """Format datetime string for Google Calendar API"""
@@ -1852,41 +1909,68 @@ async def handle_delete_contact_intent_optimized(data: dict, from_number: str):
 async def handle_calendar_auth_intent_optimized(data: dict, from_number: str):
     """OPTIMIZED: Handle calendar authentication"""
     try:
-        # Check if calendar is already connected
+        # Check if calendar is already connected using the same token as Sheets
         try:
-            service = get_calendar_service(from_number)
-            # If we get here, calendar is already connected
+            service = get_calendar_service()
+            
+            # Test the calendar service by trying to list calendars
+            calendars_result = await asyncio.get_event_loop().run_in_executor(
+                thread_pool,
+                lambda: service.calendarList().list().execute()
+            )
+            
+            # If we get here, calendar is working
             reply = (
                 "📅 **Calendar Already Connected!**\n\n"
-                "✅ Your Google Calendar is already set up and working.\n\n"
-                "You can now use calendar commands:\n"
-                "• 'create meeting tomorrow 2pm' - Create events\n"
-                "• 'list my events' - Show upcoming events\n"
-                "• 'delete my meeting' - Remove events\n\n"
-                "🔗 **Available Calendar Features:**\n"
-                "📋 Create, list, update, and delete events\n"
-                "🕐 Smart time parsing (tomorrow, next week, etc.)\n"
-                "📱 Real-time sync with Google Calendar"
+                "✅ Your Google Calendar is already set up and working!\n"
+                "🔗 Using the same authentication as Google Sheets.\n\n"
+                "**Available Calendar Commands:**\n"
+                "📋 'create meeting tomorrow 2pm' - Create events\n"
+                "📅 'list my events' - Show upcoming events\n"
+                "🗑️ 'delete my meeting' - Remove events\n"
+                "🔄 'update my meeting title to Team Sync' - Modify events\n\n"
+                "**Smart Features:**\n"
+                "🕐 Natural time parsing (tomorrow, next week, etc.)\n"
+                "📱 Real-time sync with Google Calendar\n"
+                "🎯 Automatic event duration (defaults to 1 hour)\n\n"
+                "💡 **Try it now:** Say 'create meeting tomorrow 2pm' to test!"
             )
+            
         except Exception as auth_error:
             print(f"Calendar not connected: {auth_error}")
-            # Calendar is not connected, provide setup instructions
-            reply = (
-                "📅 **Google Calendar Setup Required**\n\n"
-                "To connect your Google Calendar, you have a few options:\n\n"
-                "**Option 1: Web Setup (Recommended)**\n"
-                "1. Visit the calendar auth endpoint in your browser\n"
-                "2. Complete Google OAuth authorization\n"
-                "3. Return here to use calendar features\n\n"
-                "**Option 2: Contact Admin**\n"
-                "Ask the administrator to set up calendar credentials for your WhatsApp number.\n\n"
-                "**What you'll get once connected:**\n"
-                "📋 Create events: 'create meeting tomorrow 2pm'\n"
-                "📅 List events: 'show my calendar'\n"
-                "🗑️ Delete events: 'delete my 3pm meeting'\n"
-                "🔄 Real-time sync with Google Calendar\n\n"
-                "💡 **Note:** Calendar features require Google OAuth authentication for security."
-            )
+            
+            # Check if it's a scope issue (token doesn't have calendar permission)
+            if "insufficient" in str(auth_error).lower() or "scope" in str(auth_error).lower():
+                reply = (
+                    "📅 **Calendar Scope Missing**\n\n"
+                    "❌ Your current Google token doesn't include calendar permissions.\n\n"
+                    "**What happened:**\n"
+                    "Your Google Sheets authentication is working, but it was created before calendar features were added.\n\n"
+                    "**Solution:**\n"
+                    "The administrator needs to regenerate the OAuth token with calendar permissions included.\n\n"
+                    "**Technical Details:**\n"
+                    "• Current token has: Google Sheets access\n"
+                    "• Needed: Google Sheets + Calendar access\n"
+                    "• Required scope: `https://www.googleapis.com/auth/calendar`\n\n"
+                    "💡 **For Admin:** Re-run the OAuth flow with updated scopes and update the GOOGLE_TOKEN_BASE64 environment variable."
+                )
+            else:
+                # Other authentication issues
+                reply = (
+                    "📅 **Calendar Authentication Issue**\n\n"
+                    "❌ There's an issue with calendar authentication.\n\n"
+                    "**Error Details:**\n"
+                    f"{str(auth_error)}\n\n"
+                    "**Possible Solutions:**\n"
+                    "1. **Token Expired:** The OAuth token may need refreshing\n"
+                    "2. **Missing Permissions:** Calendar scope may not be included\n"
+                    "3. **Service Account:** May need calendar API enabled\n\n"
+                    "**For Admin:**\n"
+                    "• Check if calendar API is enabled in Google Cloud Console\n"
+                    "• Verify OAuth token includes calendar scope\n"
+                    "• Try regenerating the authentication token\n\n"
+                    "💡 **Note:** Google Sheets is working, so the base authentication is fine."
+                )
         
         await send_whatsapp_message(from_number, reply)
         
@@ -1914,7 +1998,7 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
             
             # Try to get Google Calendar service
             try:
-                service = get_calendar_service(from_number)
+                service = get_calendar_service()
                 
                 # Create event body
                 event_body = {
@@ -1955,9 +2039,7 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                 if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
                     reply = (
                         f"📅 **Calendar Authentication Required**\n\n"
-                        f"I couldn't access your Google Calendar. You need to:\n"
-                        f"1. Set up calendar authentication first\n"
-                        f"2. Use the command 'setup my calendar' to connect\n\n"
+                        f"I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
                         f"**Event Details (saved for when you connect):**\n"
                         f"📋 Title: {calendar_summary}\n"
                         f"🕐 Start: {calendar_start}\n"
@@ -1965,6 +2047,18 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                     )
                     if calendar_description:
                         reply += f"📝 Description: {calendar_description}\n"
+                    
+                    reply += f"\n💡 **Solution:** Use 'setup my calendar' to check authentication status."
+                elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
+                    reply = (
+                        f"📅 **Calendar Permissions Missing**\n\n"
+                        f"Your Google token doesn't include calendar permissions.\n\n"
+                        f"**Event Details:**\n"
+                        f"📋 Title: {calendar_summary}\n"
+                        f"🕐 Start: {calendar_start}\n"
+                        f"🕐 End: {calendar_end}\n\n"
+                        f"💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
+                    )
                 else:
                     reply = (
                         f"❌ **Error creating calendar event**\n\n"
@@ -1989,7 +2083,7 @@ async def handle_calendar_list_intent_optimized(data: dict, from_number: str):
     try:
         # Try to get Google Calendar service
         try:
-            service = get_calendar_service(from_number)
+            service = get_calendar_service()
             
             # Get current time and 1 week from now
             time_min = datetime.now(DUBAI_TZ).isoformat()
@@ -2047,10 +2141,14 @@ async def handle_calendar_list_intent_optimized(data: dict, from_number: str):
             if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
                 reply = (
                     "📅 **Calendar Authentication Required**\n\n"
-                    "I couldn't access your Google Calendar. You need to:\n"
-                    "1. Set up calendar authentication first\n"
-                    "2. Use the command 'setup my calendar' to connect\n\n"
-                    "Once connected, I'll be able to show your real calendar events!"
+                    "I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
+                    "💡 **Solution:** Use 'setup my calendar' to check authentication status."
+                )
+            elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
+                reply = (
+                    "📅 **Calendar Permissions Missing**\n\n"
+                    "Your Google token doesn't include calendar permissions.\n\n"
+                    "💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
                 )
             else:
                 reply = (
@@ -2099,7 +2197,7 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
         try:
             # Try to get Google Calendar service
             try:
-                service = get_calendar_service(from_number)
+                service = get_calendar_service()
                 
                 # If we have event ID, delete directly
                 if calendar_event_id:
@@ -2190,10 +2288,14 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
                 if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
                     reply = (
                         "📅 **Calendar Authentication Required**\n\n"
-                        "I couldn't access your Google Calendar. You need to:\n"
-                        "1. Set up calendar authentication first\n"
-                        "2. Use the command 'setup my calendar' to connect\n\n"
-                        "Once connected, I'll be able to delete events from your calendar!"
+                        "I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
+                        "💡 **Solution:** Use 'setup my calendar' to check authentication status."
+                    )
+                elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
+                    reply = (
+                        "📅 **Calendar Permissions Missing**\n\n"
+                        "Your Google token doesn't include calendar permissions.\n\n"
+                        "💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
                     )
                 elif "not found" in str(calendar_error).lower():
                     reply = (
