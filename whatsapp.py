@@ -5,6 +5,7 @@ import httpx
 import gspread
 import requests
 import tempfile
+import re
 from fastapi import FastAPI, Request, Form, BackgroundTasks, HTTPException
 from fastapi.responses import PlainTextResponse
 from typing import Dict, Optional, List
@@ -16,7 +17,6 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from pathlib import Path
 from dotenv import load_dotenv
-import re
 from memory_fusion import HybridMemoryManager
 import base64
 
@@ -41,6 +41,10 @@ DUBAI_TZ = timezone(timedelta(hours=4))  # Asia/Dubai timezone
 
 # Google Places API Configuration
 GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
+
+# Tavily Search API Configuration
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+TAVILY_API_URL = "https://api.tavily.com/search"
 
 def get_calendar_service(whatsapp_number: str):
     """Get authenticated Google Calendar service for user using same method as Sheets"""
@@ -397,6 +401,147 @@ async def find_places(query: str, location: str = None, radius: int = 5000) -> L
             })
         return results
 
+# --- [HELPER FUNCTIONS: Smart Search with Tavily] ---
+def is_search_intent(message: str) -> bool:
+    """
+    Detect if a message appears to be a search query based on patterns and keywords.
+    """
+    message_lower = message.lower().strip()
+    
+    # Skip if message is too short or looks like a command
+    if len(message_lower) < 5 or message_lower.startswith('/'):
+        return False
+    
+    # Skip if it's clearly an email, contact, or calendar intent
+    email_keywords = ['send email', 'email to', 'draft email', 'compose email']
+    contact_keywords = ['add contact', 'delete contact', 'update contact', 'contact info']
+    calendar_keywords = ['create meeting', 'schedule', 'calendar', 'appointment', 'book']
+    place_keywords = ['find places', 'restaurants near', 'coffee shops', 'best pizza in']
+    
+    if any(keyword in message_lower for keyword in email_keywords + contact_keywords + calendar_keywords + place_keywords):
+        return False
+    
+    # Search intent patterns
+    search_patterns = [
+        # Question words
+        r'\b(what|how|why|when|where|which|who)\b.*\?',
+        r'\b(what|how|why|when|where|which|who)\s+(is|are|was|were|do|does|did|can|could|should|would)\b',
+        
+        # Search phrases
+        r'\b(find|search|look\s+for|tell\s+me\s+about|explain|show\s+me)\b',
+        r'\b(best|top|latest|newest|recent|current)\b.*\b(in|for|about|on)\b',
+        r'\b(how\s+to|ways\s+to|steps\s+to)\b',
+        r'\b(what\s+is|what\s+are|what\'s)\b',
+        r'\b(learn\s+about|information\s+about|details\s+about)\b',
+        
+        # Comparison and recommendation patterns
+        r'\b(compare|vs|versus|difference\s+between)\b',
+        r'\b(recommend|suggest|advice)\b',
+        r'\b(pros\s+and\s+cons|advantages|disadvantages)\b',
+        
+        # Technology and trends
+        r'\b(latest\s+in|trends\s+in|news\s+about|updates\s+on)\b',
+        r'\b(technology|tech|AI|artificial\s+intelligence|machine\s+learning)\b',
+        
+        # General knowledge queries
+        r'\b(definition\s+of|meaning\s+of|explain)\b',
+        r'\b(guide\s+to|tutorial\s+on|instructions\s+for)\b'
+    ]
+    
+    # Check if message matches any search pattern
+    for pattern in search_patterns:
+        if re.search(pattern, message_lower):
+            return True
+    
+    # Check for question-like structure
+    if message_lower.endswith('?'):
+        return True
+    
+    # Check for imperative search commands
+    imperative_starters = ['find', 'search', 'look', 'show', 'tell', 'explain', 'help', 'get']
+    first_word = message_lower.split()[0] if message_lower.split() else ""
+    if first_word in imperative_starters:
+        return True
+    
+    return False
+
+async def handle_search_query(message: str) -> str:
+    """
+    Handle search query using Tavily API and format results for WhatsApp.
+    """
+    if not TAVILY_API_KEY:
+        return "❌ Search functionality is not available. Please contact administrator."
+    
+    try:
+        # Prepare Tavily API request
+        headers = {
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "api_key": TAVILY_API_KEY,
+            "query": message,
+            "search_depth": "basic",
+            "include_answer": True,
+            "include_images": False,
+            "include_raw_content": False,
+            "max_results": 5
+        }
+        
+        # Make API call to Tavily
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(TAVILY_API_URL, headers=headers, json=payload)
+            response.raise_for_status()
+            data = response.json()
+        
+        # Extract results
+        results = data.get("results", [])
+        answer = data.get("answer", "")
+        
+        if not results and not answer:
+            return "🔍 Couldn't find anything useful right now. Try rephrasing your search or being more specific."
+        
+        # Format response
+        response_parts = ["🔍 **Search Results:**\n"]
+        
+        # Add AI-generated answer if available
+        if answer:
+            response_parts.append(f"💡 **Quick Answer:** {answer}\n")
+        
+        # Add search results
+        if results:
+            response_parts.append("📋 **Top Results:**\n")
+            for i, result in enumerate(results[:5], 1):
+                title = result.get("title", "No title")
+                url = result.get("url", "")
+                content = result.get("content", "")
+                
+                # Truncate content if too long
+                if len(content) > 150:
+                    content = content[:150] + "..."
+                
+                response_parts.append(f"{i}. **{title}**")
+                if content:
+                    response_parts.append(f"   {content}")
+                if url:
+                    response_parts.append(f"   🔗 {url}")
+                response_parts.append("")  # Empty line for spacing
+        
+        return "\n".join(response_parts)
+        
+    except httpx.TimeoutException:
+        return "⏱️ Search request timed out. Please try again with a simpler query."
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            return "❌ Search API authentication failed. Please contact administrator."
+        elif e.response.status_code == 429:
+            return "⚠️ Too many search requests. Please wait a moment and try again."
+        else:
+            return f"❌ Search failed with error {e.response.status_code}. Please try again later."
+    except Exception as e:
+        print(f"Tavily search error: {e}")
+        return "❌ Something went wrong with the search. Please try again later."
+
 def build_extraction_prompt(user_input: str):
     # Get current date for context
     current_date = datetime.now(DUBAI_TZ)
@@ -404,12 +549,12 @@ def build_extraction_prompt(user_input: str):
     current_year = current_date.year
     
     return f'''
-You are a helpful assistant that extracts structured info from user messages for contact management, email sending, calendar management, or general conversation.
+You are a helpful assistant that extracts structured info from user messages for contact management, email sending, calendar management, place finding, web search, or general conversation.
 
 CURRENT DATE CONTEXT: Today is {current_date_str} ({current_date.strftime('%A, %B %d, %Y')})
 
 Extract:
-- intent ("send_email" for sending emails; "add_contact" for adding new contacts; "lookup_contact" for finding contact info; "update_contact" for modifying existing contacts; "delete_contact" for removing contacts; "calendar_auth" for calendar authentication; "calendar_create" for creating events; "calendar_list" for listing events; "calendar_update" for updating events; "calendar_delete" for deleting events; "find_place" for finding places using Google Places API; "memory_query" for asking about past actions or conversations; otherwise "other")
+- intent ("send_email" for sending emails; "add_contact" for adding new contacts; "lookup_contact" for finding contact info; "update_contact" for modifying existing contacts; "delete_contact" for removing contacts; "calendar_auth" for calendar authentication; "calendar_create" for creating events; "calendar_list" for listing events; "calendar_update" for updating events; "calendar_delete" for deleting events; "find_place" for finding places using Google Places API; "web_search" for general web search queries; "memory_query" for asking about past actions or conversations; otherwise "other")
 - recipient_email (the email address to send to, if explicitly mentioned)
 - recipient_name (the person's full name if no email is provided)
 - subject (a polished, professional subject line based on the message content)
@@ -430,6 +575,7 @@ Extract:
 - calendar_value (new value for calendar field updates)
 - place_query (the user's location search string for Google Places)
 - place_location (optional: a lat,lng string if user gives coordinates or "near me", else null)
+- search_query (the user's web search query for general information)
 - memory_query (what the user wants to know about their past actions: "emails", "places", "meetings", "contacts", or "all")
 
 User said:
@@ -454,6 +600,14 @@ Examples of find_place intent:
 - "Find best pizza in Downtown Dubai." → find_place (place_query: "best pizza", place_location: "Downtown Dubai")
 - "Show me vegan restaurants at 25.1972,55.2744" → find_place (place_query: "vegan restaurants", place_location: "25.1972,55.2744")
 - "Where can I find good coffee shops?" → find_place (place_query: "coffee shops", place_location: null)
+
+Examples of web_search intent:
+- "What is the latest in EV technology?" → web_search (search_query: "latest EV technology")
+- "How to write a resignation email?" → web_search (search_query: "how to write resignation email")
+- "Find me the best productivity tools" → web_search (search_query: "best productivity tools")
+- "What are the pros and cons of remote work?" → web_search (search_query: "pros and cons remote work")
+- "Explain artificial intelligence" → web_search (search_query: "explain artificial intelligence")
+- "Latest news about climate change" → web_search (search_query: "latest news climate change")
 
 Examples of memory_query intent:
 - "Did I send any emails today?" → memory_query (memory_query: "emails")
@@ -484,7 +638,7 @@ Examples of delete_contact intent:
 
 Respond ONLY in this JSON format:
 {{
-  "intent": "send_email" or "add_contact" or "lookup_contact" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "find_place" or "memory_query" or "other",
+  "intent": "send_email" or "add_contact" or "lookup_contact" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "find_place" or "web_search" or "memory_query" or "other",
   "recipient_email": "...",
   "recipient_name": "...",
   "subject": "...",
@@ -505,6 +659,7 @@ Respond ONLY in this JSON format:
   "calendar_value": "...",
   "place_query": "...",
   "place_location": "...",
+  "search_query": "...",
   "memory_query": "..."
 }}
 If you cannot extract all required fields, set intent to "other" and leave the other fields empty.
@@ -1585,6 +1740,8 @@ async def process_message_background(from_number: str, body: str, num_media: str
                                     emoji = "📅"
                                 elif intent == 'memory_query':
                                     emoji = "🧠"
+                                elif intent == 'web_search':
+                                    emoji = "🔍"
                                 else:
                                     emoji = "💬"
                                 
@@ -1603,12 +1760,46 @@ async def process_message_background(from_number: str, body: str, num_media: str
                 await send_whatsapp_message(from_number, reply)
                 return
 
+        elif data and data.get("intent") == "web_search":
+            search_query = data.get("search_query")
+            
+            if not search_query:
+                # Fallback: check if the message itself looks like a search query
+                if is_search_intent(body):
+                    search_query = body
+                else:
+                    await send_whatsapp_message(from_number, "Sorry, I couldn't understand what you want to search for.")
+                    return
+            
+            try:
+                # Perform the search using Tavily API
+                search_results = await handle_search_query(search_query)
+                await send_whatsapp_message(from_number, search_results)
+                return
+                
+            except Exception as e:
+                print(f"Web search error: {e}")
+                reply = "❌ Something went wrong with the search. Please try again later."
+                await send_whatsapp_message(from_number, reply)
+                return
+
         else:
+            # Check if the message looks like a search query even if LLM didn't detect it
+            if is_search_intent(body):
+                try:
+                    print(f"Detected search intent for message: {body}")
+                    search_results = await handle_search_query(body)
+                    await send_whatsapp_message(from_number, search_results)
+                    return
+                except Exception as e:
+                    print(f"Fallback search error: {e}")
+                    # Continue to default response if search fails
+            
             if data is None:
                 print("LLM extraction failed: No data returned from LLM.")
             else:
                 print(f"LLM extraction did not detect any specific intent. Data: {data}")
-            reply = f"Hi! You said: {body}\n\nI can help you:\n📧 Send emails\n👤 Add/update/delete contacts\n🔍 Look up contact info\n📅 Manage your calendar\n🗺️ Find places nearby\n\nCalendar commands:\n• 'setup my calendar' - Connect Google Calendar\n• 'create meeting tomorrow 2pm to 3pm' - Create events\n• 'list my events' - Show upcoming events\n\nPlace search:\n• 'Find best pizza in Downtown Dubai'\n• 'What are the top sushi spots near me?'"
+            reply = f"Hi! You said: {body}\n\nI can help you:\n📧 Send emails\n👤 Add/update/delete contacts\n🔍 Look up contact info\n📅 Manage your calendar\n🗺️ Find places nearby\n🔍 Search the web for information\n\nCalendar commands:\n• 'setup my calendar' - Connect Google Calendar\n• 'create meeting tomorrow 2pm to 3pm' - Create events\n• 'list my events' - Show upcoming events\n\nPlace search:\n• 'Find best pizza in Downtown Dubai'\n• 'What are the top sushi spots near me?'\n\nWeb search:\n• 'What is the latest in EV technology?'\n• 'How to write a resignation email?'"
             await send_whatsapp_message(from_number, reply)
             return
             
