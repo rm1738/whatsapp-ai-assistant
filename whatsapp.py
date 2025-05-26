@@ -540,33 +540,96 @@ async def handle_search_query(message: str) -> str:
         if not results and not answer:
             return "🔍 Couldn't find anything useful right now. Try rephrasing your search or being more specific."
         
-        # Format response
-        response_parts = ["🔍 **Search Results:**\n"]
-        
-        # Add AI-generated answer if available
-        if answer:
-            response_parts.append(f"💡 **Quick Answer:** {answer}\n")
-        
-        # Add search results
-        if results:
-            response_parts.append("📋 **Top Results:**\n")
+        # Use LLM to summarize and contextualize results for WhatsApp
+        try:
+            # Prepare content for LLM summarization
+            content_for_llm = f"Search Query: {message}\n\n"
+            
+            if answer:
+                content_for_llm += f"AI Answer: {answer}\n\n"
+            
+            content_for_llm += "Search Results:\n"
             for i, result in enumerate(results[:5], 1):
                 title = result.get("title", "No title")
                 url = result.get("url", "")
                 content = result.get("content", "")
-                
-                # Truncate content if too long
-                if len(content) > 150:
-                    content = content[:150] + "..."
-                
-                response_parts.append(f"{i}. **{title}**")
-                if content:
-                    response_parts.append(f"   {content}")
-                if url:
-                    response_parts.append(f"   🔗 {url}")
-                response_parts.append("")  # Empty line for spacing
-        
-        return "\n".join(response_parts)
+                content_for_llm += f"{i}. {title}\n   URL: {url}\n   Content: {content}\n\n"
+            
+            # Use OpenAI to summarize and format for WhatsApp
+            summarization_prompt = f"""
+You are helping to summarize web search results for WhatsApp. The response MUST be under 1500 characters total.
+
+Search Query: "{message}"
+
+Raw Search Data:
+{content_for_llm}
+
+Please create a concise, informative summary that:
+1. Starts with a brief answer to the user's question
+2. Lists 2-3 key points from the search results
+3. Includes 1-2 relevant URLs for more info
+4. Uses emojis appropriately
+5. Stays under 1500 characters total
+
+Format like this:
+🔍 **[Brief Answer]**
+
+📋 **Key Points:**
+• [Point 1]
+• [Point 2]
+• [Point 3]
+
+🔗 **Sources:**
+• [URL 1]
+• [URL 2]
+"""
+            
+            response = openai.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert at summarizing web search results for mobile messaging. Keep responses concise, informative, and under 1500 characters."},
+                    {"role": "user", "content": summarization_prompt}
+                ],
+                max_tokens=500,
+                temperature=0.3
+            )
+            
+            summarized_response = response.choices[0].message.content.strip()
+            
+            # Double-check character count and truncate if needed
+            if len(summarized_response) > 1500:
+                summarized_response = summarized_response[:1450] + "..."
+            
+            return summarized_response
+            
+        except Exception as llm_error:
+            print(f"LLM summarization failed: {llm_error}")
+            # Fallback to basic formatting if LLM fails
+            fallback_response = f"🔍 **Search Results for:** {message}\n\n"
+            
+            if answer:
+                # Truncate answer if too long
+                truncated_answer = answer[:200] + "..." if len(answer) > 200 else answer
+                fallback_response += f"💡 {truncated_answer}\n\n"
+            
+            # Add top 2 results with truncated content
+            if results:
+                fallback_response += "📋 **Top Results:**\n"
+                for i, result in enumerate(results[:2], 1):
+                    title = result.get("title", "No title")
+                    url = result.get("url", "")
+                    
+                    # Truncate title if too long
+                    if len(title) > 60:
+                        title = title[:60] + "..."
+                    
+                    fallback_response += f"{i}. {title}\n🔗 {url}\n\n"
+            
+            # Ensure fallback doesn't exceed limit
+            if len(fallback_response) > 1500:
+                fallback_response = fallback_response[:1450] + "..."
+            
+            return fallback_response
         
     except httpx.TimeoutException:
         return "⏱️ Search request timed out. Please try again with a simpler query."
