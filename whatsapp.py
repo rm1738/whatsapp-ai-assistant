@@ -1852,23 +1852,50 @@ async def handle_delete_contact_intent_optimized(data: dict, from_number: str):
 async def handle_calendar_auth_intent_optimized(data: dict, from_number: str):
     """OPTIMIZED: Handle calendar authentication"""
     try:
-        # For now, provide instructions for calendar setup
-        # In a full implementation, you'd generate an OAuth URL
-        reply = (
-            "📅 **Calendar Setup Required**\n\n"
-            "To connect your Google Calendar, you need to:\n"
-            "1. Visit the calendar auth endpoint\n"
-            "2. Complete Google OAuth authorization\n"
-            "3. Return here to use calendar features\n\n"
-            "For now, calendar features are available via the web API endpoints."
-        )
+        # Check if calendar is already connected
+        try:
+            service = get_calendar_service(from_number)
+            # If we get here, calendar is already connected
+            reply = (
+                "📅 **Calendar Already Connected!**\n\n"
+                "✅ Your Google Calendar is already set up and working.\n\n"
+                "You can now use calendar commands:\n"
+                "• 'create meeting tomorrow 2pm' - Create events\n"
+                "• 'list my events' - Show upcoming events\n"
+                "• 'delete my meeting' - Remove events\n\n"
+                "🔗 **Available Calendar Features:**\n"
+                "📋 Create, list, update, and delete events\n"
+                "🕐 Smart time parsing (tomorrow, next week, etc.)\n"
+                "📱 Real-time sync with Google Calendar"
+            )
+        except Exception as auth_error:
+            print(f"Calendar not connected: {auth_error}")
+            # Calendar is not connected, provide setup instructions
+            reply = (
+                "📅 **Google Calendar Setup Required**\n\n"
+                "To connect your Google Calendar, you have a few options:\n\n"
+                "**Option 1: Web Setup (Recommended)**\n"
+                "1. Visit the calendar auth endpoint in your browser\n"
+                "2. Complete Google OAuth authorization\n"
+                "3. Return here to use calendar features\n\n"
+                "**Option 2: Contact Admin**\n"
+                "Ask the administrator to set up calendar credentials for your WhatsApp number.\n\n"
+                "**What you'll get once connected:**\n"
+                "📋 Create events: 'create meeting tomorrow 2pm'\n"
+                "📅 List events: 'show my calendar'\n"
+                "🗑️ Delete events: 'delete my 3pm meeting'\n"
+                "🔄 Real-time sync with Google Calendar\n\n"
+                "💡 **Note:** Calendar features require Google OAuth authentication for security."
+            )
+        
         await send_whatsapp_message(from_number, reply)
+        
     except Exception as e:
         print(f"Calendar auth error: {e}")
-        await send_whatsapp_message(from_number, "❌ Error setting up calendar. Please try again.")
+        await send_whatsapp_message(from_number, "❌ Error checking calendar setup. Please try again.")
 
 async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
-    """OPTIMIZED: Handle calendar event creation"""
+    """OPTIMIZED: Handle calendar event creation with actual Google Calendar API"""
     calendar_summary = data.get("calendar_summary")
     calendar_start = data.get("calendar_start")
     calendar_end = data.get("calendar_end")
@@ -1885,20 +1912,72 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                 except:
                     calendar_end = calendar_start  # Fallback to same time
             
-            # For now, simulate calendar creation (in full implementation, call Google Calendar API)
-            reply = (
-                f"📅 **Calendar Event Created!**\n\n"
-                f"📋 **Title:** {calendar_summary}\n"
-                f"🕐 **Start:** {calendar_start}\n"
-                f"🕐 **End:** {calendar_end}\n"
-            )
-            
-            if calendar_description:
-                reply += f"📝 **Description:** {calendar_description}\n"
-            
-            reply += "\n✅ Event has been added to your calendar!"
+            # Try to get Google Calendar service
+            try:
+                service = get_calendar_service(from_number)
+                
+                # Create event body
+                event_body = {
+                    'summary': calendar_summary,
+                    'start': format_datetime_for_google(calendar_start),
+                    'end': format_datetime_for_google(calendar_end),
+                }
+                
+                if calendar_description:
+                    event_body['description'] = calendar_description
+                
+                # Create event in Google Calendar
+                event = await asyncio.get_event_loop().run_in_executor(
+                    thread_pool, 
+                    lambda: service.events().insert(calendarId='primary', body=event_body).execute()
+                )
+                
+                event_link = event.get('htmlLink', 'No link available')
+                event_id = event.get('id')
+                
+                reply = (
+                    f"📅 **Calendar Event Created Successfully!**\n\n"
+                    f"📋 **Title:** {calendar_summary}\n"
+                    f"🕐 **Start:** {calendar_start}\n"
+                    f"🕐 **End:** {calendar_end}\n"
+                )
+                
+                if calendar_description:
+                    reply += f"📝 **Description:** {calendar_description}\n"
+                
+                reply += f"\n🔗 **Event Link:** {event_link}\n"
+                reply += f"🆔 **Event ID:** {event_id}\n\n"
+                reply += "✅ Event has been added to your Google Calendar!"
+                
+            except Exception as calendar_error:
+                print(f"Google Calendar API error: {calendar_error}")
+                # Check if it's an authentication error
+                if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
+                    reply = (
+                        f"📅 **Calendar Authentication Required**\n\n"
+                        f"I couldn't access your Google Calendar. You need to:\n"
+                        f"1. Set up calendar authentication first\n"
+                        f"2. Use the command 'setup my calendar' to connect\n\n"
+                        f"**Event Details (saved for when you connect):**\n"
+                        f"📋 Title: {calendar_summary}\n"
+                        f"🕐 Start: {calendar_start}\n"
+                        f"🕐 End: {calendar_end}\n"
+                    )
+                    if calendar_description:
+                        reply += f"📝 Description: {calendar_description}\n"
+                else:
+                    reply = (
+                        f"❌ **Error creating calendar event**\n\n"
+                        f"There was an issue with Google Calendar API:\n"
+                        f"{str(calendar_error)}\n\n"
+                        f"**Event Details:**\n"
+                        f"📋 Title: {calendar_summary}\n"
+                        f"🕐 Start: {calendar_start}\n"
+                        f"🕐 End: {calendar_end}\n"
+                    )
             
             await send_whatsapp_message(from_number, reply)
+            
         except Exception as e:
             print(f"Calendar create error: {e}")
             await send_whatsapp_message(from_number, "❌ Error creating calendar event. Please try again.")
@@ -1906,20 +1985,83 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
         await send_whatsapp_message(from_number, "Please provide at least an event title and start time.")
 
 async def handle_calendar_list_intent_optimized(data: dict, from_number: str):
-    """OPTIMIZED: Handle calendar event listing"""
+    """OPTIMIZED: Handle calendar event listing with actual Google Calendar API"""
     try:
-        # For now, provide a sample response (in full implementation, call Google Calendar API)
-        reply = (
-            "📅 **Your Upcoming Events:**\n\n"
-            "🕐 **Today, 2:00 PM** - Team Meeting\n"
-            "   📍 Conference Room A\n\n"
-            "🕐 **Tomorrow, 10:00 AM** - Client Call\n"
-            "   📞 Zoom Meeting\n\n"
-            "🕐 **Friday, 3:00 PM** - Project Review\n"
-            "   📋 Quarterly Planning\n\n"
-            "💡 To connect your real Google Calendar, use 'setup my calendar' command."
-        )
+        # Try to get Google Calendar service
+        try:
+            service = get_calendar_service(from_number)
+            
+            # Get current time and 1 week from now
+            time_min = datetime.now(DUBAI_TZ).isoformat()
+            time_max = (datetime.now(DUBAI_TZ) + timedelta(days=7)).isoformat()
+            
+            # List events from Google Calendar
+            events_result = await asyncio.get_event_loop().run_in_executor(
+                thread_pool,
+                lambda: service.events().list(
+                    calendarId='primary',
+                    timeMin=time_min,
+                    timeMax=time_max,
+                    maxResults=10,
+                    singleEvents=True,
+                    orderBy='startTime'
+                ).execute()
+            )
+            
+            events = events_result.get('items', [])
+            
+            if not events:
+                reply = (
+                    "📅 **Your Calendar**\n\n"
+                    "📋 No upcoming events found for the next 7 days.\n\n"
+                    "💡 Use 'create meeting tomorrow 2pm' to add events!"
+                )
+            else:
+                reply = "📅 **Your Upcoming Events:**\n\n"
+                
+                for event in events:
+                    start_time = event['start'].get('dateTime', event['start'].get('date'))
+                    summary = event.get('summary', 'No title')
+                    event_id = event.get('id')
+                    
+                    # Format start time for display
+                    try:
+                        if 'T' in start_time:  # DateTime
+                            dt = datetime.fromisoformat(start_time.replace('Z', '+00:00'))
+                            formatted_time = dt.strftime('%a, %b %d at %I:%M %p')
+                        else:  # Date only
+                            dt = datetime.fromisoformat(start_time)
+                            formatted_time = dt.strftime('%a, %b %d (All day)')
+                    except:
+                        formatted_time = start_time
+                    
+                    reply += f"🕐 **{formatted_time}**\n"
+                    reply += f"📋 {summary}\n"
+                    reply += f"🆔 ID: {event_id}\n\n"
+                
+                reply += f"📊 Total: {len(events)} events"
+            
+        except Exception as calendar_error:
+            print(f"Google Calendar API error: {calendar_error}")
+            # Check if it's an authentication error
+            if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
+                reply = (
+                    "📅 **Calendar Authentication Required**\n\n"
+                    "I couldn't access your Google Calendar. You need to:\n"
+                    "1. Set up calendar authentication first\n"
+                    "2. Use the command 'setup my calendar' to connect\n\n"
+                    "Once connected, I'll be able to show your real calendar events!"
+                )
+            else:
+                reply = (
+                    f"❌ **Error accessing calendar**\n\n"
+                    f"There was an issue with Google Calendar API:\n"
+                    f"{str(calendar_error)}\n\n"
+                    f"Please try again or contact support."
+                )
+        
         await send_whatsapp_message(from_number, reply)
+        
     except Exception as e:
         print(f"Calendar list error: {e}")
         await send_whatsapp_message(from_number, "❌ Error listing calendar events. Please try again.")
@@ -1947,7 +2089,7 @@ async def handle_calendar_update_intent_optimized(data: dict, from_number: str):
         await send_whatsapp_message(from_number, "Please provide the event ID, field to update, and new value.")
 
 async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
-    """OPTIMIZED: Handle calendar event deletion"""
+    """OPTIMIZED: Handle calendar event deletion with actual Google Calendar API"""
     calendar_event_id = data.get("calendar_event_id")
     calendar_summary = data.get("calendar_summary")
     calendar_start = data.get("calendar_start")
@@ -1955,22 +2097,120 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
     # Try to identify event by ID, summary, or date
     if calendar_event_id or calendar_summary or calendar_start:
         try:
-            # For now, simulate deletion (in full implementation, call Google Calendar API)
-            if calendar_event_id:
-                identifier = f"Event ID: {calendar_event_id}"
-            elif calendar_summary:
-                identifier = f"Event: {calendar_summary}"
-            elif calendar_start:
-                identifier = f"Event on: {calendar_start}"
-            else:
-                identifier = "Event"
+            # Try to get Google Calendar service
+            try:
+                service = get_calendar_service(from_number)
+                
+                # If we have event ID, delete directly
+                if calendar_event_id:
+                    await asyncio.get_event_loop().run_in_executor(
+                        thread_pool,
+                        lambda: service.events().delete(calendarId='primary', eventId=calendar_event_id).execute()
+                    )
+                    
+                    reply = (
+                        f"📅 **Calendar Event Deleted!**\n\n"
+                        f"🗑️ **Deleted Event ID:** {calendar_event_id}\n\n"
+                        "✅ Event has been removed from your Google Calendar!"
+                    )
+                
+                # If we have summary or date, search for the event first
+                elif calendar_summary or calendar_start:
+                    # Get events to search through
+                    if calendar_start:
+                        # Search around the specific date
+                        try:
+                            search_date = datetime.fromisoformat(calendar_start.replace('Z', '+00:00'))
+                            time_min = search_date.replace(hour=0, minute=0, second=0).isoformat()
+                            time_max = search_date.replace(hour=23, minute=59, second=59).isoformat()
+                        except:
+                            # Fallback to today
+                            today = datetime.now(DUBAI_TZ)
+                            time_min = today.replace(hour=0, minute=0, second=0).isoformat()
+                            time_max = today.replace(hour=23, minute=59, second=59).isoformat()
+                    else:
+                        # Search in the next 7 days
+                        time_min = datetime.now(DUBAI_TZ).isoformat()
+                        time_max = (datetime.now(DUBAI_TZ) + timedelta(days=7)).isoformat()
+                    
+                    events_result = await asyncio.get_event_loop().run_in_executor(
+                        thread_pool,
+                        lambda: service.events().list(
+                            calendarId='primary',
+                            timeMin=time_min,
+                            timeMax=time_max,
+                            maxResults=50,
+                            singleEvents=True,
+                            orderBy='startTime'
+                        ).execute()
+                    )
+                    
+                    events = events_result.get('items', [])
+                    
+                    # Find matching event
+                    matching_event = None
+                    if calendar_summary:
+                        # Search by summary
+                        for event in events:
+                            event_summary = event.get('summary', '').lower()
+                            if calendar_summary.lower() in event_summary:
+                                matching_event = event
+                                break
+                    elif events:
+                        # If searching by date only, take the first event of that day
+                        matching_event = events[0]
+                    
+                    if matching_event:
+                        event_id = matching_event.get('id')
+                        event_title = matching_event.get('summary', 'Untitled Event')
+                        
+                        # Delete the event
+                        await asyncio.get_event_loop().run_in_executor(
+                            thread_pool,
+                            lambda: service.events().delete(calendarId='primary', eventId=event_id).execute()
+                        )
+                        
+                        reply = (
+                            f"📅 **Calendar Event Deleted!**\n\n"
+                            f"🗑️ **Deleted:** {event_title}\n"
+                            f"🆔 **Event ID:** {event_id}\n\n"
+                            "✅ Event has been removed from your Google Calendar!"
+                        )
+                    else:
+                        search_criteria = calendar_summary or f"events on {calendar_start}"
+                        reply = (
+                            f"❌ **Event Not Found**\n\n"
+                            f"I couldn't find any events matching: {search_criteria}\n\n"
+                            f"💡 Try using 'list my events' to see available events, then use the Event ID to delete."
+                        )
+                
+            except Exception as calendar_error:
+                print(f"Google Calendar API error: {calendar_error}")
+                # Check if it's an authentication error
+                if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
+                    reply = (
+                        "📅 **Calendar Authentication Required**\n\n"
+                        "I couldn't access your Google Calendar. You need to:\n"
+                        "1. Set up calendar authentication first\n"
+                        "2. Use the command 'setup my calendar' to connect\n\n"
+                        "Once connected, I'll be able to delete events from your calendar!"
+                    )
+                elif "not found" in str(calendar_error).lower():
+                    reply = (
+                        "❌ **Event Not Found**\n\n"
+                        "The event you're trying to delete doesn't exist or has already been deleted.\n\n"
+                        "💡 Use 'list my events' to see current events."
+                    )
+                else:
+                    reply = (
+                        f"❌ **Error deleting event**\n\n"
+                        f"There was an issue with Google Calendar API:\n"
+                        f"{str(calendar_error)}\n\n"
+                        f"Please try again or contact support."
+                    )
             
-            reply = (
-                f"📅 **Calendar Event Deleted!**\n\n"
-                f"🗑️ **Deleted:** {identifier}\n\n"
-                "✅ Event has been removed from your calendar!"
-            )
             await send_whatsapp_message(from_number, reply)
+            
         except Exception as e:
             print(f"Calendar delete error: {e}")
             await send_whatsapp_message(from_number, "❌ Error deleting calendar event. Please try again.")
