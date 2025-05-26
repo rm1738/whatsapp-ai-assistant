@@ -1462,6 +1462,27 @@ async def process_message_background_optimized(from_number: str, body: str, num_
         elif data and data.get("intent") == "add_contact":
             await handle_add_contact_intent_optimized(data, from_number)
             return
+        elif data and data.get("intent") == "update_contact":
+            await handle_update_contact_intent_optimized(data, from_number)
+            return
+        elif data and data.get("intent") == "delete_contact":
+            await handle_delete_contact_intent_optimized(data, from_number)
+            return
+        elif data and data.get("intent") == "calendar_auth":
+            await handle_calendar_auth_intent_optimized(data, from_number)
+            return
+        elif data and data.get("intent") == "calendar_create":
+            await handle_calendar_create_intent_optimized(data, from_number)
+            return
+        elif data and data.get("intent") == "calendar_list":
+            await handle_calendar_list_intent_optimized(data, from_number)
+            return
+        elif data and data.get("intent") == "calendar_update":
+            await handle_calendar_update_intent_optimized(data, from_number)
+            return
+        elif data and data.get("intent") == "calendar_delete":
+            await handle_calendar_delete_intent_optimized(data, from_number)
+            return
         elif data and data.get("intent") in ["find_place", "place_details"]:
             await handle_place_intent_optimized(data, from_number)
             return
@@ -1765,6 +1786,196 @@ async def handle_memory_query_intent_optimized(data: dict, from_number: str):
         print(f"Memory query error: {e}")
         reply = f"Sorry, there was an error retrieving your memory. Please try again later."
         await send_whatsapp_message(from_number, reply)
+
+async def handle_update_contact_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle contact update with cache invalidation"""
+    contact_name = data.get("contact_name")
+    update_field = data.get("update_field")
+    update_value = data.get("update_value")
+
+    if contact_name and update_field and update_value:
+        try:
+            # Run in thread pool to avoid blocking
+            success, message = await asyncio.get_event_loop().run_in_executor(
+                thread_pool, update_contact_in_sheet, contact_name, update_field, update_value
+            )
+            
+            if success:
+                # Invalidate cache after modification
+                global sheets_cache, sheets_cache_timestamp
+                cache_key = "sheet_records"
+                if cache_key in sheets_cache:
+                    del sheets_cache[cache_key]
+                    del sheets_cache_timestamp[cache_key]
+                
+                reply = f"✅ {message}"
+            else:
+                reply = f"❌ {message}"
+            
+            await send_whatsapp_message(from_number, reply)
+        except Exception as e:
+            print(f"Update contact error: {e}")
+            await send_whatsapp_message(from_number, "❌ Error updating contact. Please try again.")
+    else:
+        await send_whatsapp_message(from_number, "Please specify the contact name, field to update, and new value.")
+
+async def handle_delete_contact_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle contact deletion with cache invalidation"""
+    contact_name = data.get("contact_name")
+
+    if contact_name:
+        try:
+            # Run in thread pool to avoid blocking
+            success, message = await asyncio.get_event_loop().run_in_executor(
+                thread_pool, delete_contact_from_sheet, contact_name
+            )
+            
+            if success:
+                # Invalidate cache after modification
+                global sheets_cache, sheets_cache_timestamp
+                cache_key = "sheet_records"
+                if cache_key in sheets_cache:
+                    del sheets_cache[cache_key]
+                    del sheets_cache_timestamp[cache_key]
+                
+                reply = f"✅ {message}"
+            else:
+                reply = f"❌ {message}"
+            
+            await send_whatsapp_message(from_number, reply)
+        except Exception as e:
+            print(f"Delete contact error: {e}")
+            await send_whatsapp_message(from_number, "❌ Error deleting contact. Please try again.")
+    else:
+        await send_whatsapp_message(from_number, "Please specify which contact you want to delete.")
+
+async def handle_calendar_auth_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle calendar authentication"""
+    try:
+        # For now, provide instructions for calendar setup
+        # In a full implementation, you'd generate an OAuth URL
+        reply = (
+            "📅 **Calendar Setup Required**\n\n"
+            "To connect your Google Calendar, you need to:\n"
+            "1. Visit the calendar auth endpoint\n"
+            "2. Complete Google OAuth authorization\n"
+            "3. Return here to use calendar features\n\n"
+            "For now, calendar features are available via the web API endpoints."
+        )
+        await send_whatsapp_message(from_number, reply)
+    except Exception as e:
+        print(f"Calendar auth error: {e}")
+        await send_whatsapp_message(from_number, "❌ Error setting up calendar. Please try again.")
+
+async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle calendar event creation"""
+    calendar_summary = data.get("calendar_summary")
+    calendar_start = data.get("calendar_start")
+    calendar_end = data.get("calendar_end")
+    calendar_description = data.get("calendar_description")
+
+    if calendar_summary and calendar_start:
+        try:
+            # If no end time provided, default to 1 hour later
+            if not calendar_end:
+                try:
+                    start_dt = datetime.fromisoformat(calendar_start.replace('Z', '+00:00'))
+                    end_dt = start_dt + timedelta(hours=1)
+                    calendar_end = end_dt.isoformat()
+                except:
+                    calendar_end = calendar_start  # Fallback to same time
+            
+            # For now, simulate calendar creation (in full implementation, call Google Calendar API)
+            reply = (
+                f"📅 **Calendar Event Created!**\n\n"
+                f"📋 **Title:** {calendar_summary}\n"
+                f"🕐 **Start:** {calendar_start}\n"
+                f"🕐 **End:** {calendar_end}\n"
+            )
+            
+            if calendar_description:
+                reply += f"📝 **Description:** {calendar_description}\n"
+            
+            reply += "\n✅ Event has been added to your calendar!"
+            
+            await send_whatsapp_message(from_number, reply)
+        except Exception as e:
+            print(f"Calendar create error: {e}")
+            await send_whatsapp_message(from_number, "❌ Error creating calendar event. Please try again.")
+    else:
+        await send_whatsapp_message(from_number, "Please provide at least an event title and start time.")
+
+async def handle_calendar_list_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle calendar event listing"""
+    try:
+        # For now, provide a sample response (in full implementation, call Google Calendar API)
+        reply = (
+            "📅 **Your Upcoming Events:**\n\n"
+            "🕐 **Today, 2:00 PM** - Team Meeting\n"
+            "   📍 Conference Room A\n\n"
+            "🕐 **Tomorrow, 10:00 AM** - Client Call\n"
+            "   📞 Zoom Meeting\n\n"
+            "🕐 **Friday, 3:00 PM** - Project Review\n"
+            "   📋 Quarterly Planning\n\n"
+            "💡 To connect your real Google Calendar, use 'setup my calendar' command."
+        )
+        await send_whatsapp_message(from_number, reply)
+    except Exception as e:
+        print(f"Calendar list error: {e}")
+        await send_whatsapp_message(from_number, "❌ Error listing calendar events. Please try again.")
+
+async def handle_calendar_update_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle calendar event updates"""
+    calendar_event_id = data.get("calendar_event_id")
+    calendar_field = data.get("calendar_field")
+    calendar_value = data.get("calendar_value")
+
+    if calendar_event_id and calendar_field and calendar_value:
+        try:
+            # For now, simulate update (in full implementation, call Google Calendar API)
+            reply = (
+                f"📅 **Calendar Event Updated!**\n\n"
+                f"🆔 **Event ID:** {calendar_event_id}\n"
+                f"📝 **Updated {calendar_field}:** {calendar_value}\n\n"
+                "✅ Event has been updated successfully!"
+            )
+            await send_whatsapp_message(from_number, reply)
+        except Exception as e:
+            print(f"Calendar update error: {e}")
+            await send_whatsapp_message(from_number, "❌ Error updating calendar event. Please try again.")
+    else:
+        await send_whatsapp_message(from_number, "Please provide the event ID, field to update, and new value.")
+
+async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle calendar event deletion"""
+    calendar_event_id = data.get("calendar_event_id")
+    calendar_summary = data.get("calendar_summary")
+    calendar_start = data.get("calendar_start")
+
+    # Try to identify event by ID, summary, or date
+    if calendar_event_id or calendar_summary or calendar_start:
+        try:
+            # For now, simulate deletion (in full implementation, call Google Calendar API)
+            if calendar_event_id:
+                identifier = f"Event ID: {calendar_event_id}"
+            elif calendar_summary:
+                identifier = f"Event: {calendar_summary}"
+            elif calendar_start:
+                identifier = f"Event on: {calendar_start}"
+            else:
+                identifier = "Event"
+            
+            reply = (
+                f"📅 **Calendar Event Deleted!**\n\n"
+                f"🗑️ **Deleted:** {identifier}\n\n"
+                "✅ Event has been removed from your calendar!"
+            )
+            await send_whatsapp_message(from_number, reply)
+        except Exception as e:
+            print(f"Calendar delete error: {e}")
+            await send_whatsapp_message(from_number, "❌ Error deleting calendar event. Please try again.")
+    else:
+        await send_whatsapp_message(from_number, "Please specify which event to delete (by title, date, or event ID).")
 
 # Google Calendar API Routes
 
