@@ -819,7 +819,7 @@ You are a helpful assistant that extracts structured info from user messages for
 CURRENT DATE CONTEXT: Today is {current_date_str} ({current_date.strftime('%A, %B %d, %Y')})
 
 Extract:
-- intent ("send_email" for sending emails; "add_contact" for adding new contacts; "lookup_contact" for finding contact info; "update_contact" for modifying existing contacts; "delete_contact" for removing contacts; "calendar_auth" for calendar authentication; "calendar_create" for creating events; "calendar_list" for listing events; "calendar_update" for updating events; "calendar_delete" for deleting events; "find_place" for finding places using Google Places API; "place_details" for getting specific details about a known place like Google Maps link, address, phone number; "web_search" for general web search queries; "memory_query" for asking about past actions or conversations; otherwise "other")
+- intent ("send_email" for sending emails; "add_contact" for adding new contacts; "lookup_contact" for finding contact info; "list_contacts" for showing all contacts; "update_contact" for modifying existing contacts; "delete_contact" for removing contacts; "calendar_auth" for calendar authentication; "calendar_create" for creating events; "calendar_list" for listing events; "calendar_update" for updating events; "calendar_delete" for deleting events; "find_place" for finding places using Google Places API; "place_details" for getting specific details about a known place like Google Maps link, address, phone number; "web_search" for general web search queries; "memory_query" for asking about past actions or conversations; otherwise "other")
 - recipient_email (the email address to send to, if explicitly mentioned)
 - recipient_name (the person's full name if no email is provided)
 - subject (a polished, professional subject line based on the message content)
@@ -909,9 +909,17 @@ Examples of delete_contact intent:
 - "Delete John Smith from contacts"
 - "Remove Sarah from my contact list"
 
+Examples of list_contacts intent:
+- "Show me all my contacts" → list_contacts
+- "List all contacts" → list_contacts
+- "Get all contacts" → list_contacts
+- "Show my contact list" → list_contacts
+- "Display all my contacts" → list_contacts
+- "What contacts do I have?" → list_contacts
+
 Respond ONLY in this JSON format:
 {{
-  "intent": "send_email" or "add_contact" or "lookup_contact" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "find_place" or "place_details" or "web_search" or "memory_query" or "other",
+  "intent": "send_email" or "add_contact" or "lookup_contact" or "list_contacts" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "find_place" or "place_details" or "web_search" or "memory_query" or "other",
   "recipient_email": "...",
   "recipient_name": "...",
   "subject": "...",
@@ -1549,10 +1557,13 @@ async def process_message_background_optimized(from_number: str, body: str, num_
         elif data and data.get("intent") == "memory_query":
             await handle_memory_query_intent_optimized(data, from_number)
             return
+        elif data and data.get("intent") == "list_contacts":
+            await handle_list_contacts_intent_optimized(data, from_number)
+            return
         # ... other intents would be handled similarly
         
         # Default response for unhandled intents
-        reply = f"Hi! You said: {body}\n\nI can help you:\n📧 Send emails\n👤 Add/update/delete contacts\n🔍 Look up contact info\n📅 Manage your calendar\n🗺️ Find places nearby\n🔍 Search the web for information\n\nCalendar commands:\n• 'setup my calendar' - Connect Google Calendar\n• 'create meeting tomorrow 2pm to 3pm' - Create events\n• 'list my events' - Show upcoming events\n\nPlace search:\n• 'Find best pizza in Downtown Dubai'\n• 'What are the top sushi spots near me?'\n\nWeb search:\n• 'What is the latest in EV technology?'\n• 'How to write a resignation email?'"
+        reply = f"Hi! You said: {body}\n\nI can help you:\n📧 Send emails\n👤 Add/update/delete contacts\n📋 List all contacts\n🔍 Look up contact info\n📅 Manage your calendar\n🗺️ Find places nearby\n🔍 Search the web for information\n\nContact commands:\n• 'show all contacts' - List all your contacts\n• 'lookup [name]' - Find specific contact info\n• 'add contact [name], [email], [phone]' - Add new contact\n\nCalendar commands:\n• 'setup my calendar' - Connect Google Calendar\n• 'create meeting tomorrow 2pm to 3pm' - Create events\n• 'list my events' - Show upcoming events\n\nPlace search:\n• 'Find best pizza in Downtown Dubai'\n• 'What are the top sushi spots near me?'\n\nWeb search:\n• 'What is the latest in EV technology?'\n• 'How to write a resignation email?'"
         await send_whatsapp_message(from_number, reply)
             
     except Exception as e:
@@ -2319,6 +2330,17 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
     else:
         await send_whatsapp_message(from_number, "Please specify which event to delete (by title, date, or event ID).")
 
+async def handle_list_contacts_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle list all contacts intent with caching"""
+    try:
+        # Get all contacts from Google Sheets
+        contacts_list = await get_all_contacts_optimized()
+        await send_whatsapp_message(from_number, contacts_list)
+        
+    except Exception as e:
+        print(f"List contacts error: {e}")
+        await send_whatsapp_message(from_number, "❌ Error retrieving contacts. Please try again.")
+
 # Google Calendar API Routes
 
 @app.get("/calendar/auth")
@@ -2665,6 +2687,59 @@ async def health_check():
         "cache_stats": cache_stats,
         "memory_manager": "available" if memory_manager else "unavailable"
     }
+
+async def get_all_contacts_optimized() -> str:
+    """OPTIMIZED: Get all contacts from Google Sheets with caching and format for display"""
+    if not sheet:
+        print("Google Sheets not initialized")
+        return "❌ Google Sheets not available"
+    
+    try:
+        # Use cached records
+        records = await get_cached_sheet_records()
+        
+        if not records:
+            return "📋 **Your Contact List**\n\n❌ No contacts found in your Google Sheets."
+        
+        # Format contacts for WhatsApp display
+        reply = f"📋 **Your Contact List** ({len(records)} contacts)\n\n"
+        
+        for i, record in enumerate(records, 1):
+            name = record.get('full_name', 'Unknown')
+            email = record.get('email', '')
+            phone = record.get('phone_number', '')
+            
+            # Format each contact entry
+            reply += f"👤 **{name}**\n"
+            
+            if email and email.strip() and email.lower() != 'n/a':
+                reply += f"   📧 {email}\n"
+            
+            if phone and phone.strip() and phone.lower() != 'n/a':
+                reply += f"   📱 {phone}\n"
+            
+            reply += "\n"
+            
+            # Break into chunks if too many contacts (WhatsApp has message limits)
+            if len(reply) > 1400:  # Leave room for footer
+                remaining_contacts = len(records) - i
+                if remaining_contacts > 0:
+                    reply += f"... and {remaining_contacts} more contacts.\n\n"
+                    reply += "💡 Use 'lookup [name]' to find specific contact details."
+                break
+        
+        # Add helpful footer if not truncated
+        if len(reply) <= 1400:
+            reply += "💡 **Commands:**\n"
+            reply += "• 'lookup [name]' - Get specific contact info\n"
+            reply += "• 'add contact [name], [email], [phone]' - Add new contact\n"
+            reply += "• 'update [name] email to [new email]' - Update contact"
+        
+        return reply
+        
+    except Exception as e:
+        print(f"Error getting all contacts: {e}")
+        return "❌ Error retrieving contacts. Please try again."
 
 if __name__ == "__main__":
     import uvicorn
