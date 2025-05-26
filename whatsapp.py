@@ -925,22 +925,24 @@ async def extract_email_info_with_llm_optimized(user_input: str, whatsapp_number
                 ]
             )
         
-        llm_task = asyncio.create_task(
-            asyncio.get_event_loop().run_in_executor(thread_pool, llm_call)
-        )
-        
         # Wait for both tasks with timeout
         if memory_context_task:
             memory_context, response = await asyncio.gather(
                 memory_context_task, 
-                asyncio.wait_for(llm_task, timeout=20.0),
+                asyncio.wait_for(
+                    asyncio.get_event_loop().run_in_executor(thread_pool, llm_call),
+                    timeout=20.0
+                ),
                 return_exceptions=True
             )
             
             # If memory context was successful, we could re-run with enhanced prompt
             # For now, we'll use the response as-is for performance
         else:
-            response = await asyncio.wait_for(llm_task, timeout=20.0)
+            response = await asyncio.wait_for(
+                asyncio.get_event_loop().run_in_executor(thread_pool, llm_call),
+                timeout=20.0
+            )
         
         content = response.choices[0].message.content
         data = json.loads(content)
