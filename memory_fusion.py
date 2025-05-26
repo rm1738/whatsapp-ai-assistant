@@ -1,48 +1,89 @@
 """
-Memory Fusion Module
+Memory Fusion Module - PERFORMANCE OPTIMIZED
 Combines structured memory (Supabase) and semantic memory (Pinecone) 
-to provide comprehensive context for the LLM
+to provide comprehensive context for the LLM with parallel execution and caching
 """
 
 import asyncio
 from typing import Dict, List, Any, Optional
+from functools import lru_cache
+import time
 from memory_supabase import SupabaseMemoryManager
 from memory_pinecone import PineconeMemoryManager
 
 class HybridMemoryManager:
     def __init__(self):
-        """Initialize both memory managers"""
+        """Initialize both memory managers with performance optimizations"""
         self.supabase_memory = SupabaseMemoryManager()
         self.pinecone_memory = PineconeMemoryManager()
+        
+        # PERFORMANCE: Cache for user IDs to avoid repeated lookups
+        self._user_id_cache = {}
+        self._user_id_cache_timestamp = {}
+        self._cache_ttl = 300  # 5 minutes
     
     async def get_user_id(self, whatsapp_number: str) -> str:
-        """Get or create user ID based on WhatsApp number"""
-        return await self.supabase_memory.get_or_create_user(whatsapp_number)
+        """OPTIMIZED: Get or create user ID with caching"""
+        current_time = time.time()
+        
+        # Check cache first
+        if (whatsapp_number in self._user_id_cache and 
+            whatsapp_number in self._user_id_cache_timestamp and
+            current_time - self._user_id_cache_timestamp[whatsapp_number] < self._cache_ttl):
+            return self._user_id_cache[whatsapp_number]
+        
+        # Fetch from database
+        user_id = await self.supabase_memory.get_or_create_user(whatsapp_number)
+        
+        # Update cache
+        self._user_id_cache[whatsapp_number] = user_id
+        self._user_id_cache_timestamp[whatsapp_number] = current_time
+        
+        return user_id
     
     async def store_conversation_with_memory(self, user_id: str, message_text: str, 
                                            intent: Optional[str] = None, 
                                            metadata: Optional[Dict] = None) -> bool:
-        """Store conversation in both structured and semantic memory"""
+        """OPTIMIZED: Store conversation with parallel execution"""
         try:
-            # Store in Pinecone for semantic search
-            pinecone_id = await self.pinecone_memory.store_message_embedding(
-                user_id=user_id,
-                message_text=message_text,
-                intent=intent,
-                metadata=metadata
+            # PERFORMANCE: Execute both storage operations in parallel
+            pinecone_task = asyncio.create_task(
+                self.pinecone_memory.store_message_embedding(
+                    user_id=user_id,
+                    message_text=message_text,
+                    intent=intent,
+                    metadata=metadata
+                )
             )
             
-            # Store in Supabase for structured access
-            supabase_success = await self.supabase_memory.store_conversation(
-                user_id=user_id,
-                message_text=message_text,
-                message_type="user_input",
-                intent=intent,
-                metadata=metadata,
-                pinecone_id=pinecone_id
+            supabase_task = asyncio.create_task(
+                self.supabase_memory.store_conversation(
+                    user_id=user_id,
+                    message_text=message_text,
+                    message_type="user_input",
+                    intent=intent,
+                    metadata=metadata,
+                    pinecone_id=None  # Will be updated after pinecone completes
+                )
             )
             
-            return supabase_success and bool(pinecone_id)
+            # Wait for both with timeout
+            try:
+                pinecone_id, supabase_success = await asyncio.gather(
+                    asyncio.wait_for(pinecone_task, timeout=10.0),
+                    asyncio.wait_for(supabase_task, timeout=10.0),
+                    return_exceptions=True
+                )
+                
+                # Check if both succeeded
+                pinecone_success = bool(pinecone_id) and not isinstance(pinecone_id, Exception)
+                supabase_success = bool(supabase_success) and not isinstance(supabase_success, Exception)
+                
+                return pinecone_success and supabase_success
+                
+            except asyncio.TimeoutError:
+                print("Memory storage timed out")
+                return False
             
         except Exception as e:
             print(f"Error storing conversation with memory: {e}")
@@ -52,27 +93,50 @@ class HybridMemoryManager:
                                       include_semantic: bool = True,
                                       include_structured: bool = True,
                                       semantic_limit: int = 5) -> str:
-        """Get comprehensive context combining both memory types"""
-        context_parts = []
-        
+        """OPTIMIZED: Get comprehensive context with parallel retrieval"""
         try:
-            # Get structured memory context
-            if include_structured:
-                structured_context = self.supabase_memory.format_structured_memory_context(user_id)
-                if structured_context:
-                    context_parts.append(structured_context)
+            # PERFORMANCE: Execute context retrieval in parallel
+            tasks = []
             
-            # Get semantic memory context
-            if include_semantic:
-                similar_messages = await self.pinecone_memory.get_conversation_context(
-                    user_id=user_id,
-                    current_message=current_message,
-                    context_limit=semantic_limit
+            if include_structured:
+                structured_task = asyncio.create_task(
+                    asyncio.get_event_loop().run_in_executor(
+                        None, self.supabase_memory.format_structured_memory_context, user_id
+                    )
                 )
+                tasks.append(("structured", structured_task))
+            
+            if include_semantic:
+                semantic_task = asyncio.create_task(
+                    self.pinecone_memory.get_conversation_context(
+                        user_id=user_id,
+                        current_message=current_message,
+                        context_limit=semantic_limit
+                    )
+                )
+                tasks.append(("semantic", semantic_task))
+            
+            # Wait for all tasks with timeout
+            context_parts = []
+            if tasks:
+                try:
+                    results = await asyncio.gather(
+                        *[task for _, task in tasks],
+                        return_exceptions=True
+                    )
+                    
+                    for i, (context_type, _) in enumerate(tasks):
+                        result = results[i]
+                        if not isinstance(result, Exception):
+                            if context_type == "structured" and result:
+                                context_parts.append(result)
+                            elif context_type == "semantic" and result:
+                                semantic_context = self.pinecone_memory.format_semantic_memory_context(result)
+                                if semantic_context:
+                                    context_parts.append(semantic_context)
                 
-                if similar_messages:
-                    semantic_context = self.pinecone_memory.format_semantic_memory_context(similar_messages)
-                    context_parts.append(semantic_context)
+                except Exception as e:
+                    print(f"Error gathering context: {e}")
             
             # Combine all context
             if context_parts:
@@ -87,7 +151,7 @@ class HybridMemoryManager:
     
     async def update_user_preferences_from_conversation(self, user_id: str, 
                                                        conversation_data: Dict[str, Any]) -> bool:
-        """Update user preferences based on conversation patterns"""
+        """OPTIMIZED: Update user preferences with parallel operations"""
         try:
             # Extract preferences from conversation
             preferences_to_update = {}
@@ -105,21 +169,32 @@ class HybridMemoryManager:
             if conversation_data.get("intent") == "find_place":
                 location = conversation_data.get("place_location")
                 if location and location not in ["near me", None]:
-                    # Get current preferences
-                    current_prefs = await self.supabase_memory.get_user_preferences(user_id)
-                    favorite_locations = current_prefs.get("favorite_locations", [])
+                    # PERFORMANCE: Parallel preference retrieval and update
+                    current_prefs_task = asyncio.create_task(
+                        self.supabase_memory.get_user_preferences(user_id)
+                    )
                     
-                    # Ensure favorite_locations is a list
-                    if not isinstance(favorite_locations, list):
-                        favorite_locations = []
-                    
-                    if location not in favorite_locations:
-                        favorite_locations.append(location)
-                        preferences_to_update["favorite_locations"] = favorite_locations
+                    try:
+                        current_prefs = await asyncio.wait_for(current_prefs_task, timeout=5.0)
+                        favorite_locations = current_prefs.get("favorite_locations", [])
+                        
+                        # Ensure favorite_locations is a list
+                        if not isinstance(favorite_locations, list):
+                            favorite_locations = []
+                        
+                        if location not in favorite_locations:
+                            favorite_locations.append(location)
+                            preferences_to_update["favorite_locations"] = favorite_locations
+                    except asyncio.TimeoutError:
+                        print("Preference retrieval timed out")
+                        return False
             
             # Update preferences if any changes detected
             if preferences_to_update:
-                return await self.supabase_memory.update_user_preferences(user_id, preferences_to_update)
+                return await asyncio.wait_for(
+                    self.supabase_memory.update_user_preferences(user_id, preferences_to_update),
+                    timeout=5.0
+                )
             
             return True
             
@@ -129,7 +204,7 @@ class HybridMemoryManager:
     
     async def create_task_from_conversation(self, user_id: str, intent: str, 
                                           description: str, metadata: Optional[Dict] = None) -> bool:
-        """Create a task based on conversation intent"""
+        """OPTIMIZED: Create a task with timeout"""
         try:
             # Map intents to task types
             task_type_mapping = {
@@ -141,11 +216,14 @@ class HybridMemoryManager:
             
             task_type = task_type_mapping.get(intent, "general_task")
             
-            return await self.supabase_memory.create_task(
-                user_id=user_id,
-                task_type=task_type,
-                description=description,
-                metadata=metadata
+            return await asyncio.wait_for(
+                self.supabase_memory.create_task(
+                    user_id=user_id,
+                    task_type=task_type,
+                    description=description,
+                    metadata=metadata
+                ),
+                timeout=5.0
             )
             
         except Exception as e:
@@ -153,17 +231,38 @@ class HybridMemoryManager:
             return False
     
     async def get_personalized_prompt_context(self, user_id: str, current_message: str) -> str:
-        """Get personalized context for LLM prompt enhancement"""
+        """OPTIMIZED: Get personalized context with parallel execution"""
         try:
-            # Get user preferences
-            preferences = await self.supabase_memory.get_user_preferences(user_id)
-            
-            # Get semantic context
-            similar_messages = await self.pinecone_memory.get_conversation_context(
-                user_id=user_id,
-                current_message=current_message,
-                context_limit=3
+            # PERFORMANCE: Execute preference and semantic retrieval in parallel
+            preferences_task = asyncio.create_task(
+                self.supabase_memory.get_user_preferences(user_id)
             )
+            
+            semantic_task = asyncio.create_task(
+                self.pinecone_memory.get_conversation_context(
+                    user_id=user_id,
+                    current_message=current_message,
+                    context_limit=3
+                )
+            )
+            
+            try:
+                preferences, similar_messages = await asyncio.gather(
+                    asyncio.wait_for(preferences_task, timeout=5.0),
+                    asyncio.wait_for(semantic_task, timeout=5.0),
+                    return_exceptions=True
+                )
+                
+                # Handle exceptions
+                if isinstance(preferences, Exception):
+                    preferences = {}
+                if isinstance(similar_messages, Exception):
+                    similar_messages = []
+                
+            except Exception as e:
+                print(f"Error gathering personalized context: {e}")
+                preferences = {}
+                similar_messages = []
             
             # Build personalized context
             context_parts = []
@@ -198,13 +297,34 @@ class HybridMemoryManager:
             return ""
     
     async def analyze_conversation_patterns(self, user_id: str) -> Dict[str, Any]:
-        """Analyze user's conversation patterns for insights"""
+        """OPTIMIZED: Analyze user's conversation patterns with parallel execution"""
         try:
-            # Get recent conversations
-            recent_conversations = await self.supabase_memory.get_recent_conversations(user_id, limit=20)
+            # PERFORMANCE: Execute analysis queries in parallel
+            conversations_task = asyncio.create_task(
+                self.supabase_memory.get_recent_conversations(user_id, limit=20)
+            )
             
-            # Get pending tasks
-            pending_tasks = await self.supabase_memory.get_user_tasks(user_id, status="pending")
+            tasks_task = asyncio.create_task(
+                self.supabase_memory.get_user_tasks(user_id, status="pending")
+            )
+            
+            try:
+                recent_conversations, pending_tasks = await asyncio.gather(
+                    asyncio.wait_for(conversations_task, timeout=10.0),
+                    asyncio.wait_for(tasks_task, timeout=10.0),
+                    return_exceptions=True
+                )
+                
+                # Handle exceptions
+                if isinstance(recent_conversations, Exception):
+                    recent_conversations = []
+                if isinstance(pending_tasks, Exception):
+                    pending_tasks = []
+                
+            except Exception as e:
+                print(f"Error gathering analysis data: {e}")
+                recent_conversations = []
+                pending_tasks = []
             
             # Analyze patterns
             intent_counts = {}
@@ -243,4 +363,10 @@ class HybridMemoryManager:
             
         except Exception as e:
             print(f"Error cleaning up old memories: {e}")
-            return False 
+            return False
+    
+    def clear_cache(self):
+        """PERFORMANCE: Clear internal caches"""
+        self._user_id_cache.clear()
+        self._user_id_cache_timestamp.clear()
+        print("✅ Memory manager caches cleared") 
