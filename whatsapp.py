@@ -208,11 +208,38 @@ def initialize_google_sheets():
                             # Check if we have a token file
                             if os.path.exists("combined_token.json"):
                                 creds = Credentials.from_authorized_user_file("combined_token.json")
+                                
+                                # Check if token is expired and try to refresh
+                                if creds and creds.expired and creds.refresh_token:
+                                    print("🔄 Token expired, attempting to refresh...")
+                                    try:
+                                        creds.refresh(Request())
+                                        print("✅ Token refreshed successfully")
+                                        
+                                        # Save the refreshed token back to file
+                                        with open("combined_token.json", 'w') as token_file:
+                                            token_file.write(creds.to_json())
+                                        print("✅ Refreshed token saved")
+                                        
+                                        # Also update the base64 version for future deployments
+                                        import base64
+                                        token_base64 = base64.b64encode(creds.to_json().encode()).decode()
+                                        print(f"💡 Updated token base64 (save this as GOOGLE_TOKEN_BASE64): {token_base64[:50]}...")
+                                        
+                                    except Exception as refresh_error:
+                                        print(f"❌ Token refresh failed: {refresh_error}")
+                                        print("💡 Token may be permanently expired. Need to re-authenticate.")
+                                        creds = None
+                                
                                 if creds and creds.valid:
                                     gc = gspread.authorize(creds)
-                                    print("✅ Using existing OAuth token")
+                                    print("✅ Using OAuth token authentication")
+                                elif creds:
+                                    print("❌ OAuth token is not valid and cannot be refreshed")
+                                    print("💡 The token may have been revoked or expired beyond refresh capability")
+                                    gc = None
                                 else:
-                                    print("❌ No valid OAuth token available")
+                                    print("❌ Could not load OAuth token")
                                     gc = None
                             else:
                                 print("❌ No OAuth token file found")
@@ -237,8 +264,15 @@ def initialize_google_sheets():
                             try:
                                 creds.refresh(Request())
                                 print("✅ Token refreshed successfully")
+                                
+                                # Save the refreshed token back to file
+                                with open("combined_token.json", 'w') as token_file:
+                                    token_file.write(creds.to_json())
+                                print("✅ Refreshed token saved")
+                                
                             except Exception as refresh_error:
                                 print(f"❌ Token refresh failed: {refresh_error}")
+                                print("💡 Token may be permanently expired. Need to re-authenticate.")
                                 creds = None
                         
                         if creds and creds.valid:
@@ -246,6 +280,7 @@ def initialize_google_sheets():
                             print("✅ Using OAuth token authentication")
                         elif creds:
                             print("❌ OAuth token is not valid and cannot be refreshed")
+                            print("💡 The token may have been revoked or expired beyond refresh capability")
                             gc = None
                         else:
                             print("❌ Could not load OAuth token")
@@ -261,7 +296,11 @@ def initialize_google_sheets():
                 sheet = gc.open_by_key(SHEET_ID).worksheet(WORKSHEET_NAME)
                 print("✅ Google Sheets initialized successfully")
             else:
-                print("❌ Google Sheets initialization skipped - authentication failed")
+                print("❌ Google Sheets initialization failed - authentication failed")
+                print("💡 SOLUTION: You need to regenerate the OAuth token locally and update Railway")
+                print("   1. Run the app locally")
+                print("   2. Use 'setup my calendar' command to re-authenticate")
+                print("   3. Copy the new token base64 and update GOOGLE_TOKEN_BASE64 in Railway")
         else:
             print("❌ Google Sheets initialization skipped - no credentials available")
     except Exception as e:
