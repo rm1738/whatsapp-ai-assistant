@@ -18,6 +18,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import re
 from memory_fusion import HybridMemoryManager
+import base64
 
 # Load environment variables from .env file
 load_dotenv()
@@ -44,6 +45,10 @@ GOOGLE_PLACES_API_KEY = os.getenv("GOOGLE_PLACES_API_KEY")
 def get_calendar_service(whatsapp_number: str):
     """Get authenticated Google Calendar service for user using same method as Sheets"""
     try:
+        # Ensure credentials are available
+        if not setup_google_credentials():
+            raise Exception("Google credentials not available")
+        
         # Use the same OAuth approach as Google Sheets but with calendar scope
         import gspread
         from google.auth.transport.requests import Request
@@ -111,13 +116,49 @@ SENDER_EMAIL = "rahulmenon@mentis-ed.ai"
 SHEET_ID = "1DHwrOScPMkVYss76ETvhHaBONZ3ec2zXpNuRXN8XWyQ"
 WORKSHEET_NAME = "Sheet1"
 
+def setup_google_credentials():
+    """Setup Google credentials for both local and production environments"""
+    import base64
+    import json
+    
+    # Check if we have credentials in environment variable (for production)
+    google_creds_base64 = os.getenv("GOOGLE_CREDENTIALS_BASE64")
+    
+    if google_creds_base64:
+        try:
+            # Decode base64 credentials and write to file
+            creds_json = base64.b64decode(google_creds_base64).decode('utf-8')
+            with open("credentials.json", "w") as f:
+                f.write(creds_json)
+            print("✅ Google credentials loaded from environment variable")
+            return True
+        except Exception as e:
+            print(f"❌ Failed to decode Google credentials from environment: {e}")
+            return False
+    
+    # Check if credentials.json exists locally (for development)
+    elif os.path.exists("credentials.json"):
+        print("✅ Using local credentials.json file")
+        return True
+    
+    else:
+        print("❌ No Google credentials found. Set GOOGLE_CREDENTIALS_BASE64 environment variable or add credentials.json file")
+        return False
+
 # Initialize Google Sheets client
+gc = None
+sheet = None
+
 try:
-    # Use OAuth2 with credentials from project directory
-    gc = gspread.oauth(credentials_filename="credentials.json")
-    sheet = gc.open_by_key(SHEET_ID).worksheet(WORKSHEET_NAME)
+    if setup_google_credentials():
+        # Use OAuth2 with credentials from project directory
+        gc = gspread.oauth(credentials_filename="credentials.json")
+        sheet = gc.open_by_key(SHEET_ID).worksheet(WORKSHEET_NAME)
+        print("✅ Google Sheets initialized successfully")
+    else:
+        print("❌ Google Sheets initialization skipped - no credentials available")
 except Exception as e:
-    print(f"Failed to initialize Google Sheets: {e}")
+    print(f"❌ Failed to initialize Google Sheets: {e}")
     gc = None
     sheet = None
 
@@ -820,6 +861,12 @@ async def process_message_background(from_number: str, body: str, num_media: str
 
         if data and data.get("intent") == "calendar_auth":
             try:
+                # Ensure credentials are available
+                if not setup_google_credentials():
+                    reply = "❌ Google credentials not available. Please contact administrator."
+                    await send_whatsapp_message(from_number, reply)
+                    return
+                
                 # Create OAuth flow with both Sheets and Calendar scopes
                 from google_auth_oauthlib.flow import InstalledAppFlow
                 from google.auth.transport.requests import Request
