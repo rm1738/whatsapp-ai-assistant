@@ -850,7 +850,7 @@ User said:
 """{user_input}"""
 
 Examples of calendar_bulk_create intent:
-- "Create three meetings: Team standup tomorrow 9am, Client call Friday 2pm, and Review session next Monday 10am" → calendar_bulk_create (calendar_events: [{"summary": "Team standup", "start": "...", "end": "..."}, {"summary": "Client call", "start": "...", "end": "..."}, {"summary": "Review session", "start": "...", "end": "..."}])
+- "Create three meetings: Team standup tomorrow 9am, Client call Friday 2pm, and Review session next Monday 10am" → calendar_bulk_create (calendar_events: [{{"summary": "Team standup", "start": "...", "end": "..."}}, {{"summary": "Client call", "start": "...", "end": "..."}}, {{"summary": "Review session", "start": "...", "end": "..."}}])
 - "Schedule multiple events: Lunch with John today 1pm, Gym session tomorrow 6pm, and Doctor appointment Thursday 3pm" → calendar_bulk_create
 - "Add these meetings to my calendar: Project kickoff Monday 10am to 11am, Budget review Tuesday 2pm to 3pm" → calendar_bulk_create
 
@@ -931,7 +931,7 @@ Examples of list_contacts intent:
 - "What contacts do I have?" → list_contacts
 
 Respond ONLY in this JSON format:
-{{
+{{{{
   "intent": "send_email" or "add_contact" or "lookup_contact" or "list_contacts" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_bulk_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "calendar_bulk_delete" or "find_place" or "place_details" or "web_search" or "memory_query" or "other",
   "recipient_email": "...",
   "recipient_name": "...",
@@ -958,7 +958,7 @@ Respond ONLY in this JSON format:
   "place_detail_type": "...",
   "search_query": "...",
   "memory_query": "..."
-}}
+}}}}
 If you cannot extract all required fields, set intent to "other" and leave the other fields empty.
 '''
 
