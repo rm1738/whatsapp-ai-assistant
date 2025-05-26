@@ -1164,6 +1164,59 @@ async def lookup_contact_info_optimized(name: str, field: str) -> str:
         print(f"Error looking up contact {name}: {e}")
         return "Error looking up contact"
 
+async def get_all_contacts_optimized() -> str:
+    """OPTIMIZED: Get all contacts from Google Sheets with caching and format for display"""
+    if not sheet:
+        print("Google Sheets not initialized")
+        return "❌ Google Sheets not available"
+    
+    try:
+        # Use cached records
+        records = await get_cached_sheet_records()
+        
+        if not records:
+            return "📋 **Your Contact List**\n\n❌ No contacts found in your Google Sheets."
+        
+        # Format contacts for WhatsApp display
+        reply = f"📋 **Your Contact List** ({len(records)} contacts)\n\n"
+        
+        for i, record in enumerate(records, 1):
+            name = record.get('full_name', 'Unknown')
+            email = record.get('email', '')
+            phone = record.get('phone_number', '')
+            
+            # Format each contact entry
+            reply += f"👤 **{name}**\n"
+            
+            if email and email.strip() and email.lower() != 'n/a':
+                reply += f"   📧 {email}\n"
+            
+            if phone and phone.strip() and phone.lower() != 'n/a':
+                reply += f"   📱 {phone}\n"
+            
+            reply += "\n"
+            
+            # Break into chunks if too many contacts (WhatsApp has message limits)
+            if len(reply) > 1400:  # Leave room for footer
+                remaining_contacts = len(records) - i
+                if remaining_contacts > 0:
+                    reply += f"... and {remaining_contacts} more contacts.\n\n"
+                    reply += "💡 Use 'lookup [name]' to find specific contact details."
+                break
+        
+        # Add helpful footer if not truncated
+        if len(reply) <= 1400:
+            reply += "💡 **Commands:**\n"
+            reply += "• 'lookup [name]' - Get specific contact info\n"
+            reply += "• 'add contact [name], [email], [phone]' - Add new contact\n"
+            reply += "• 'update [name] email to [new email]' - Update contact"
+        
+        return reply
+        
+    except Exception as e:
+        print(f"Error getting all contacts: {e}")
+        return "❌ Error retrieving contacts. Please try again."
+
 async def send_email_resend(to_email: str, subject: str, email_body: str):
     headers = {
         "Authorization": f"Bearer {RESEND_API_KEY}",
@@ -2687,59 +2740,6 @@ async def health_check():
         "cache_stats": cache_stats,
         "memory_manager": "available" if memory_manager else "unavailable"
     }
-
-async def get_all_contacts_optimized() -> str:
-    """OPTIMIZED: Get all contacts from Google Sheets with caching and format for display"""
-    if not sheet:
-        print("Google Sheets not initialized")
-        return "❌ Google Sheets not available"
-    
-    try:
-        # Use cached records
-        records = await get_cached_sheet_records()
-        
-        if not records:
-            return "📋 **Your Contact List**\n\n❌ No contacts found in your Google Sheets."
-        
-        # Format contacts for WhatsApp display
-        reply = f"📋 **Your Contact List** ({len(records)} contacts)\n\n"
-        
-        for i, record in enumerate(records, 1):
-            name = record.get('full_name', 'Unknown')
-            email = record.get('email', '')
-            phone = record.get('phone_number', '')
-            
-            # Format each contact entry
-            reply += f"👤 **{name}**\n"
-            
-            if email and email.strip() and email.lower() != 'n/a':
-                reply += f"   📧 {email}\n"
-            
-            if phone and phone.strip() and phone.lower() != 'n/a':
-                reply += f"   📱 {phone}\n"
-            
-            reply += "\n"
-            
-            # Break into chunks if too many contacts (WhatsApp has message limits)
-            if len(reply) > 1400:  # Leave room for footer
-                remaining_contacts = len(records) - i
-                if remaining_contacts > 0:
-                    reply += f"... and {remaining_contacts} more contacts.\n\n"
-                    reply += "💡 Use 'lookup [name]' to find specific contact details."
-                break
-        
-        # Add helpful footer if not truncated
-        if len(reply) <= 1400:
-            reply += "💡 **Commands:**\n"
-            reply += "• 'lookup [name]' - Get specific contact info\n"
-            reply += "• 'add contact [name], [email], [phone]' - Add new contact\n"
-            reply += "• 'update [name] email to [new email]' - Update contact"
-        
-        return reply
-        
-    except Exception as e:
-        print(f"Error getting all contacts: {e}")
-        return "❌ Error retrieving contacts. Please try again."
 
 if __name__ == "__main__":
     import uvicorn
