@@ -407,7 +407,7 @@ async def transcribe_audio(audio_url: str) -> str | None:
 # --- [HELPER FUNCTION: Google Places Text Search] ---
 async def find_places(query: str, location: str = None, radius: int = 5000) -> List[Dict]:
     """
-    Calls Google Places Text Search API and returns top 5 results with name, address, rating, and place_id.
+    Calls Google Places Text Search API and returns top 5 results with name, address, rating, place_id, and Google Maps link.
     """
     api_key = os.getenv("GOOGLE_PLACES_API_KEY")
     if not api_key:
@@ -432,11 +432,28 @@ async def find_places(query: str, location: str = None, radius: int = 5000) -> L
         
         results = []
         for place in data.get("results", [])[:5]:
+            place_id = place.get("place_id")
+            name = place.get("name")
+            
+            # Create Google Maps link
+            maps_link = f"https://maps.google.com/maps?place_id={place_id}" if place_id else None
+            
+            # Get coordinates for alternative maps link if place_id fails
+            geometry = place.get("geometry", {})
+            location_coords = geometry.get("location", {})
+            lat = location_coords.get("lat")
+            lng = location_coords.get("lng")
+            
+            # Alternative maps link using coordinates
+            coords_link = f"https://maps.google.com/maps?q={lat},{lng}" if lat and lng else None
+            
             results.append({
-                "name": place.get("name"),
+                "name": name,
                 "formatted_address": place.get("formatted_address"),
                 "rating": place.get("rating"),
-                "place_id": place.get("place_id")
+                "place_id": place_id,
+                "maps_link": maps_link or coords_link,
+                "coordinates": {"lat": lat, "lng": lng} if lat and lng else None
             })
         return results
 
@@ -656,7 +673,7 @@ You are a helpful assistant that extracts structured info from user messages for
 CURRENT DATE CONTEXT: Today is {current_date_str} ({current_date.strftime('%A, %B %d, %Y')})
 
 Extract:
-- intent ("send_email" for sending emails; "add_contact" for adding new contacts; "lookup_contact" for finding contact info; "update_contact" for modifying existing contacts; "delete_contact" for removing contacts; "calendar_auth" for calendar authentication; "calendar_create" for creating events; "calendar_list" for listing events; "calendar_update" for updating events; "calendar_delete" for deleting events; "find_place" for finding places using Google Places API; "web_search" for general web search queries; "memory_query" for asking about past actions or conversations; otherwise "other")
+- intent ("send_email" for sending emails; "add_contact" for adding new contacts; "lookup_contact" for finding contact info; "update_contact" for modifying existing contacts; "delete_contact" for removing contacts; "calendar_auth" for calendar authentication; "calendar_create" for creating events; "calendar_list" for listing events; "calendar_update" for updating events; "calendar_delete" for deleting events; "find_place" for finding places using Google Places API; "place_details" for getting specific details about a known place like Google Maps link, address, phone number; "web_search" for general web search queries; "memory_query" for asking about past actions or conversations; otherwise "other")
 - recipient_email (the email address to send to, if explicitly mentioned)
 - recipient_name (the person's full name if no email is provided)
 - subject (a polished, professional subject line based on the message content)
@@ -675,13 +692,27 @@ Extract:
 - calendar_event_id (event ID for updating/deleting calendar events)
 - calendar_field (field to update: "summary", "description", "start", "end")
 - calendar_value (new value for calendar field updates)
-- place_query (the user's location search string for Google Places)
+- place_query (the user's location search string for Google Places OR the specific place name when asking for details)
 - place_location (optional: a lat,lng string if user gives coordinates or "near me", else null)
+- place_detail_type (what specific detail is requested: "maps_link", "address", "phone", "hours", "website", or "all")
 - search_query (the user's web search query for general information)
 - memory_query (what the user wants to know about their past actions: "emails", "places", "meetings", "contacts", or "all")
 
 User said:
 """{user_input}"""
+
+Examples of place_details intent (asking for specific info about a known place):
+- "Can I get the Google Maps location for Padel Pro Jumeirah Park?" → place_details (place_query: "Padel Pro Jumeirah Park", place_detail_type: "maps_link")
+- "What's the address of Burj Khalifa?" → place_details (place_query: "Burj Khalifa", place_detail_type: "address")
+- "Get me the phone number for Dubai Mall" → place_details (place_query: "Dubai Mall", place_detail_type: "phone")
+- "I want the Google Maps link for that restaurant" → place_details (place_query: "restaurant", place_detail_type: "maps_link")
+- "Show me the location of Padel Pro One Central" → place_details (place_query: "Padel Pro One Central", place_detail_type: "maps_link")
+
+Examples of find_place intent (searching for places):
+- "What are the top sushi spots near me?" → find_place (place_query: "sushi spots", place_location: "near me")
+- "Find best pizza in Downtown Dubai." → find_place (place_query: "best pizza", place_location: "Downtown Dubai")
+- "Show me vegan restaurants at 25.1972,55.2744" → find_place (place_query: "vegan restaurants", place_location: "25.1972,55.2744")
+- "Where can I find good coffee shops?" → find_place (place_query: "coffee shops", place_location: null)
 
 Examples of calendar intents (using current date context):
 - "setup my calendar" or "connect calendar" → calendar_auth
@@ -696,12 +727,6 @@ Examples of calendar intents (using current date context):
 - "remove my appointment tomorrow" → calendar_delete (calendar_start: "{(current_date + timedelta(days=1)).strftime('%Y-%m-%d')}")
 
 IMPORTANT: For calendar_delete operations, ALWAYS extract the date/time information into calendar_start field, even if it's relative like "today", "tomorrow", "May 26", etc. Convert these to ISO date format (YYYY-MM-DD) using the current date context provided above.
-
-Examples of find_place intent:
-- "What are the top sushi spots near me?" → find_place (place_query: "sushi spots", place_location: "near me")
-- "Find best pizza in Downtown Dubai." → find_place (place_query: "best pizza", place_location: "Downtown Dubai")
-- "Show me vegan restaurants at 25.1972,55.2744" → find_place (place_query: "vegan restaurants", place_location: "25.1972,55.2744")
-- "Where can I find good coffee shops?" → find_place (place_query: "coffee shops", place_location: null)
 
 Examples of web_search intent:
 - "What is the latest in EV technology?" → web_search (search_query: "latest EV technology")
@@ -740,7 +765,7 @@ Examples of delete_contact intent:
 
 Respond ONLY in this JSON format:
 {{
-  "intent": "send_email" or "add_contact" or "lookup_contact" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "find_place" or "web_search" or "memory_query" or "other",
+  "intent": "send_email" or "add_contact" or "lookup_contact" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "find_place" or "place_details" or "web_search" or "memory_query" or "other",
   "recipient_email": "...",
   "recipient_name": "...",
   "subject": "...",
@@ -761,6 +786,7 @@ Respond ONLY in this JSON format:
   "calendar_value": "...",
   "place_query": "...",
   "place_location": "...",
+  "place_detail_type": "...",
   "search_query": "...",
   "memory_query": "..."
 }}
@@ -1720,6 +1746,78 @@ async def process_message_background(from_number: str, body: str, num_media: str
             except Exception as e:
                 print(f"Places search error: {e}")
                 await send_whatsapp_message(from_number, f"Sorry, there was an error searching for places: {str(e)}")
+                return
+
+        elif data and data.get("intent") == "place_details":
+            place_query = data.get("place_query")
+            detail_type = data.get("place_detail_type", "maps_link")
+            
+            if not place_query:
+                await send_whatsapp_message(from_number, "Sorry, I couldn't understand which place you're asking about.")
+                return
+            
+            try:
+                # Search for the specific place
+                results = await find_places(place_query)
+                
+                if not results:
+                    reply = f"Sorry, I couldn't find '{place_query}'. Could you be more specific?"
+                elif len(results) == 1:
+                    # Single result - provide the requested detail
+                    place = results[0]
+                    name = place.get('name', 'Unknown')
+                    
+                    if detail_type == "maps_link":
+                        maps_link = place.get('maps_link')
+                        if maps_link:
+                            reply = f"📍 **{name}**\n🗺️ Google Maps: {maps_link}"
+                        else:
+                            reply = f"Sorry, I couldn't get the Google Maps link for {name}."
+                    
+                    elif detail_type == "address":
+                        address = place.get('formatted_address', 'Address not available')
+                        reply = f"📍 **{name}**\n🏠 Address: {address}"
+                    
+                    elif detail_type == "all":
+                        address = place.get('formatted_address', 'Address not available')
+                        rating = place.get('rating')
+                        maps_link = place.get('maps_link')
+                        
+                        reply = f"📍 **{name}**\n🏠 Address: {address}"
+                        if rating:
+                            reply += f"\n⭐ Rating: {rating}"
+                        if maps_link:
+                            reply += f"\n🗺️ Google Maps: {maps_link}"
+                    
+                    else:
+                        # Default to maps link for other detail types
+                        maps_link = place.get('maps_link')
+                        if maps_link:
+                            reply = f"📍 **{name}**\n🗺️ Google Maps: {maps_link}"
+                        else:
+                            reply = f"Sorry, I couldn't get that information for {name}."
+                
+                else:
+                    # Multiple results - show options with maps links
+                    reply = f"I found multiple places for '{place_query}':\n\n"
+                    for i, place in enumerate(results[:3], 1):
+                        name = place.get('name', 'Unknown')
+                        rating = place.get('rating')
+                        maps_link = place.get('maps_link')
+                        
+                        rating_str = f" (⭐{rating})" if rating else ""
+                        reply += f"{i}. **{name}**{rating_str}\n"
+                        if maps_link:
+                            reply += f"   🗺️ {maps_link}\n\n"
+                        else:
+                            reply += f"   📍 {place.get('formatted_address', 'Address not available')}\n\n"
+                
+                await send_whatsapp_message(from_number, reply)
+                return
+                
+            except Exception as e:
+                print(f"Place details error: {e}")
+                await send_whatsapp_message(from_number, f"Sorry, there was an error getting place details: {str(e)}")
                 return
 
         elif data and data.get("intent") == "memory_query":
