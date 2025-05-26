@@ -2150,8 +2150,10 @@ async def handle_calendar_list_intent_optimized(data: dict, from_number: str):
             service = get_calendar_service()
             
             # Get current time and 1 week from now
-            time_min = datetime.now(DUBAI_TZ).isoformat()
-            time_max = (datetime.now(DUBAI_TZ) + timedelta(days=7)).isoformat()
+            now = datetime.now(DUBAI_TZ)
+            future = now + timedelta(days=7)
+            time_min = now.isoformat()
+            time_max = future.isoformat()
             
             # List events from Google Calendar
             events_result = await asyncio.get_event_loop().run_in_executor(
@@ -2283,17 +2285,33 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
                         # Search around the specific date
                         try:
                             search_date = datetime.fromisoformat(calendar_start.replace('Z', '+00:00'))
-                            time_min = search_date.replace(hour=0, minute=0, second=0).isoformat()
-                            time_max = search_date.replace(hour=23, minute=59, second=59).isoformat()
-                        except:
+                            # Ensure timezone is set to Dubai timezone
+                            if search_date.tzinfo is None:
+                                search_date = search_date.replace(tzinfo=DUBAI_TZ)
+                            else:
+                                search_date = search_date.astimezone(DUBAI_TZ)
+                            
+                            # Create start and end of day in Dubai timezone
+                            start_of_day = search_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                            end_of_day = search_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                            
+                            # Format for Google Calendar API (RFC3339)
+                            time_min = start_of_day.isoformat()
+                            time_max = end_of_day.isoformat()
+                        except Exception as date_error:
+                            print(f"Date parsing error: {date_error}")
                             # Fallback to today
                             today = datetime.now(DUBAI_TZ)
-                            time_min = today.replace(hour=0, minute=0, second=0).isoformat()
-                            time_max = today.replace(hour=23, minute=59, second=59).isoformat()
+                            start_of_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
+                            end_of_day = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+                            time_min = start_of_day.isoformat()
+                            time_max = end_of_day.isoformat()
                     else:
                         # Search in the next 7 days
-                        time_min = datetime.now(DUBAI_TZ).isoformat()
-                        time_max = (datetime.now(DUBAI_TZ) + timedelta(days=7)).isoformat()
+                        now = datetime.now(DUBAI_TZ)
+                        future = now + timedelta(days=7)
+                        time_min = now.isoformat()
+                        time_max = future.isoformat()
                     
                     events_result = await asyncio.get_event_loop().run_in_executor(
                         thread_pool,
