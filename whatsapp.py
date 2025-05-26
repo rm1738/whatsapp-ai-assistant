@@ -121,6 +121,9 @@ def setup_google_credentials():
     import base64
     import json
     
+    credentials_available = False
+    token_available = False
+    
     # Check if we have credentials in environment variable (for production)
     google_creds_base64 = os.getenv("GOOGLE_CREDENTIALS_BASE64")
     google_token_base64 = os.getenv("GOOGLE_TOKEN_BASE64")
@@ -132,9 +135,9 @@ def setup_google_credentials():
             with open("credentials.json", "w") as f:
                 f.write(creds_json)
             print("✅ Google credentials loaded from environment variable")
+            credentials_available = True
         except Exception as e:
             print(f"❌ Failed to decode Google credentials from environment: {e}")
-            return False
     
     if google_token_base64:
         try:
@@ -143,16 +146,26 @@ def setup_google_credentials():
             with open("combined_token.json", "w") as f:
                 f.write(token_json)
             print("✅ Google OAuth token loaded from environment variable")
+            token_available = True
         except Exception as e:
             print(f"❌ Failed to decode Google token from environment: {e}")
     
     # Check if credentials.json exists locally (for development)
-    if os.path.exists("credentials.json"):
+    if os.path.exists("credentials.json") and not credentials_available:
         print("✅ Using local credentials.json file")
-        return True
-    else:
-        print("❌ No Google credentials found. Set GOOGLE_CREDENTIALS_BASE64 environment variable or add credentials.json file")
+        credentials_available = True
+    
+    # Check if token file exists locally
+    if os.path.exists("combined_token.json") and not token_available:
+        print("✅ Using local combined_token.json file")
+        token_available = True
+    
+    # We need either credentials OR token to proceed
+    if not credentials_available and not token_available:
+        print("❌ No Google credentials or token found. Set GOOGLE_CREDENTIALS_BASE64 or GOOGLE_TOKEN_BASE64 environment variable")
         return False
+    
+    return True
 
 # Initialize Google Sheets client
 gc = None
@@ -160,45 +173,68 @@ sheet = None
 
 try:
     if setup_google_credentials():
-        # Check if we're using service account credentials (better for production)
-        import json
-        with open("credentials.json", "r") as f:
-            creds_data = json.load(f)
-        
-        if "type" in creds_data and creds_data["type"] == "service_account":
-            # Use service account authentication (no browser needed)
-            gc = gspread.service_account(filename="credentials.json")
-            print("✅ Using Google Service Account authentication")
-        else:
-            # Use OAuth2 authentication (requires browser - for local development)
-            try:
-                gc = gspread.oauth(credentials_filename="credentials.json")
-                print("✅ Using Google OAuth authentication")
-            except Exception as oauth_error:
-                print(f"❌ OAuth failed (no browser available): {oauth_error}")
-                print("💡 Trying alternative authentication method...")
-                
-                # Try using the OAuth credentials directly without browser
+        # Check if we have credentials.json file
+        if os.path.exists("credentials.json"):
+            # Check if we're using service account credentials (better for production)
+            import json
+            with open("credentials.json", "r") as f:
+                creds_data = json.load(f)
+            
+            if "type" in creds_data and creds_data["type"] == "service_account":
+                # Use service account authentication (no browser needed)
+                gc = gspread.service_account(filename="credentials.json")
+                print("✅ Using Google Service Account authentication")
+            else:
+                # Use OAuth2 authentication (requires browser - for local development)
                 try:
-                    from google.oauth2.credentials import Credentials
-                    from google.auth.transport.requests import Request
-                    import os
+                    gc = gspread.oauth(credentials_filename="credentials.json")
+                    print("✅ Using Google OAuth authentication")
+                except Exception as oauth_error:
+                    print(f"❌ OAuth failed (no browser available): {oauth_error}")
+                    print("💡 Trying alternative authentication method...")
                     
-                    # Check if we have a token file
-                    if os.path.exists("combined_token.json"):
-                        creds = Credentials.from_authorized_user_file("combined_token.json")
-                        if creds and creds.valid:
-                            gc = gspread.authorize(creds)
-                            print("✅ Using existing OAuth token")
+                    # Try using the OAuth credentials directly without browser
+                    try:
+                        from google.oauth2.credentials import Credentials
+                        from google.auth.transport.requests import Request
+                        import os
+                        
+                        # Check if we have a token file
+                        if os.path.exists("combined_token.json"):
+                            creds = Credentials.from_authorized_user_file("combined_token.json")
+                            if creds and creds.valid:
+                                gc = gspread.authorize(creds)
+                                print("✅ Using existing OAuth token")
+                            else:
+                                print("❌ No valid OAuth token available")
+                                gc = None
                         else:
-                            print("❌ No valid OAuth token available")
+                            print("❌ No OAuth token file found")
                             gc = None
-                    else:
-                        print("❌ No OAuth token file found")
+                    except Exception as token_error:
+                        print(f"❌ Token authentication failed: {token_error}")
                         gc = None
-                except Exception as token_error:
-                    print(f"❌ Token authentication failed: {token_error}")
+        else:
+            # No credentials.json, try to use token file directly
+            print("💡 No credentials.json found, trying OAuth token authentication...")
+            try:
+                from google.oauth2.credentials import Credentials
+                
+                # Check if we have a token file
+                if os.path.exists("combined_token.json"):
+                    creds = Credentials.from_authorized_user_file("combined_token.json")
+                    if creds and creds.valid:
+                        gc = gspread.authorize(creds)
+                        print("✅ Using OAuth token authentication")
+                    else:
+                        print("❌ OAuth token is not valid")
+                        gc = None
+                else:
+                    print("❌ No OAuth token file found")
                     gc = None
+            except Exception as token_error:
+                print(f"❌ Token authentication failed: {token_error}")
+                gc = None
         
         if gc:
             sheet = gc.open_by_key(SHEET_ID).worksheet(WORKSHEET_NAME)
