@@ -1074,13 +1074,13 @@ async def get_email_by_name_optimized(name: str) -> str | None:
             full_name = str(record.get('full_name', '')).strip().lower()
             # Try exact match first
             if full_name == name_lower:
-                email = record.get('email', '').strip()
+                email = str(record.get('email', '') or '').strip()  # Convert to string first
                 if email:
                     print(f"Found email for {name}: {email}")
                     return email
             # Try partial match (name is contained in full_name)
             elif name_lower in full_name or any(part in full_name for part in name_lower.split()):
-                email = record.get('email', '').strip()
+                email = str(record.get('email', '') or '').strip()  # Convert to string first
                 if email:
                     print(f"Found email for {name} (matched {record.get('full_name', '')}): {email}")
                     return email
@@ -1182,8 +1182,8 @@ async def get_all_contacts_optimized() -> str:
         
         for i, record in enumerate(records, 1):
             name = record.get('full_name', 'Unknown')
-            email = record.get('email', '')
-            phone = record.get('phone_number', '')
+            email = str(record.get('email', '') or '')  # Convert to string first
+            phone = str(record.get('phone_number', '') or '')  # Convert to string first
             
             # Format each contact entry
             reply += f"👤 **{name}**\n"
