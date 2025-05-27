@@ -867,6 +867,10 @@ Examples of calendar_bulk_delete intent:
 - "Remove all events this Friday" → calendar_bulk_delete (calendar_delete_targets: ["this Friday"])
 - "Delete meetings for the following week" → calendar_bulk_delete (calendar_delete_targets: ["following week"])
 - "Cancel everything for the next 7 days" → calendar_bulk_delete (calendar_delete_targets: ["next 7 days"])
+- "Delete all my meetings" → calendar_bulk_delete (calendar_delete_targets: ["all my meetings"])
+- "Remove all events" → calendar_bulk_delete (calendar_delete_targets: ["all events"])
+- "Cancel everything" → calendar_bulk_delete (calendar_delete_targets: ["everything"])
+- "Clear my calendar" → calendar_bulk_delete (calendar_delete_targets: ["all my meetings"])
 
 Examples of place_details intent (asking for specific info about a known place):
 - "Can I get the Google Maps location for Padel Pro Jumeirah Park?" → place_details (place_query: "Padel Pro Jumeirah Park", place_detail_type: "maps_link")
@@ -1006,7 +1010,7 @@ async def extract_email_info_with_llm_optimized(user_input: str, whatsapp_number
         # PERFORMANCE: Run LLM extraction with timeout - FIX: Run in thread pool since OpenAI client is sync
         def llm_call():
             return openai.chat.completions.create(
-                model="gpt-4.1",
+                model="gpt-4.1ß",
                 messages=[
                     {"role": "system", "content": "You extract structured email instructions and generate professional emails signed as Rahul Menon. Use the provided memory context to personalize responses based on user preferences and past interactions."},
                     {"role": "user", "content": enhanced_prompt}
@@ -2323,10 +2327,6 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
                             # Create start and end of day in Dubai timezone
                             start_of_day = search_date.replace(hour=0, minute=0, second=0, microsecond=0)
                             end_of_day = search_date.replace(hour=23, minute=59, second=59, microsecond=999999)
-                            
-                            # Format for Google Calendar API (RFC3339)
-                            time_min = start_of_day.isoformat()
-                            time_max = end_of_day.isoformat()
                         except Exception as date_error:
                             print(f"Date parsing error: {date_error}")
                             # Fallback to today
@@ -2665,17 +2665,34 @@ async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: 
                             "next week", "upcoming week", "coming week", "the upcoming week", 
                             "the next week", "the coming week", "following week"
                         ]):
-                            # Next week starts from next Monday
-                            days_until_next_monday = (7 - now.weekday()) % 7
-                            if days_until_next_monday == 0:  # If today is Monday, next week is 7 days away
-                                days_until_next_monday = 7
-                            
-                            start_of_next_week = now + timedelta(days=days_until_next_monday)
-                            start_of_next_week = start_of_next_week.replace(hour=0, minute=0, second=0, microsecond=0)
-                            end_of_next_week = start_of_next_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
-                            
-                            start_range = start_of_next_week
-                            end_range = end_of_next_week
+                            # For "upcoming week", be more flexible - include current week if we're early in the week
+                            if "upcoming" in target_str or "coming" in target_str:
+                                # If it's Monday-Wednesday, "upcoming week" likely means rest of this week + next week
+                                # If it's Thursday-Sunday, "upcoming week" likely means next week
+                                if now.weekday() <= 2:  # Monday=0, Tuesday=1, Wednesday=2
+                                    # Include from today through next Sunday
+                                    start_range = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                                    days_until_next_sunday = (6 - now.weekday()) + 7  # This Sunday + 7 days
+                                    end_of_period = now + timedelta(days=days_until_next_sunday)
+                                    end_range = end_of_period.replace(hour=23, minute=59, second=59, microsecond=999999)
+                                else:
+                                    # Late in week, so "upcoming week" means next week
+                                    days_until_next_monday = (7 - now.weekday()) % 7
+                                    if days_until_next_monday == 0:
+                                        days_until_next_monday = 7
+                                    
+                                    start_of_next_week = now + timedelta(days=days_until_next_monday)
+                                    start_range = start_of_next_week.replace(hour=0, minute=0, second=0, microsecond=0)
+                                    end_range = start_of_next_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
+                            else:
+                                # For "next week", always mean the following calendar week
+                                days_until_next_monday = (7 - now.weekday()) % 7
+                                if days_until_next_monday == 0:
+                                    days_until_next_monday = 7
+                                
+                                start_of_next_week = now + timedelta(days=days_until_next_monday)
+                                start_range = start_of_next_week.replace(hour=0, minute=0, second=0, microsecond=0)
+                                end_range = start_of_next_week + timedelta(days=6, hours=23, minutes=59, seconds=59, microseconds=999999)
                         
                         # Handle "today" variations
                         elif any(phrase in target_str for phrase in ["today", "today's"]):
@@ -2742,6 +2759,16 @@ async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: 
                             end_of_week = now + timedelta(days=days_until_sunday)
                             end_range = end_of_week.replace(hour=23, minute=59, second=59, microsecond=999999)
                         
+                        # Handle broad deletion patterns like "all my meetings", "everything", etc.
+                        elif any(phrase in target_str for phrase in [
+                            "all my meetings", "all meetings", "all events", "all my events", 
+                            "everything", "all appointments", "all my appointments"
+                        ]):
+                            # When users say "all my meetings" without specifying time, 
+                            # assume they mean upcoming events (today + next 7 days)
+                            start_range = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                            end_range = (now + timedelta(days=7)).replace(hour=23, minute=59, second=59, microsecond=999999)
+                        
                         # Handle specific dates (try to parse ISO format or common formats)
                         else:
                             try:
@@ -2778,6 +2805,7 @@ async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: 
                     
                     # Find events in the calculated date range
                     if start_range and end_range:
+                        print(f"🔍 Debug: Searching for events between {start_range} and {end_range} for target '{target}'")
                         for event in all_events:
                             event_start = event['start'].get('dateTime', event['start'].get('date'))
                             try:
@@ -2787,9 +2815,12 @@ async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: 
                                     event_dt = datetime.fromisoformat(event_start).replace(tzinfo=DUBAI_TZ)
                                 
                                 if start_range <= event_dt <= end_range:
+                                    print(f"🎯 Debug: Found matching event '{event.get('summary', 'Untitled')}' at {event_dt}")
                                     events_to_delete.append(event)
                             except:
                                 continue
+                        else:
+                            print(f"⚠️ Debug: No date range calculated for target '{target}'")
                     
                     # If no events found by date, search by title
                     if not events_to_delete:
