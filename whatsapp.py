@@ -1010,7 +1010,7 @@ async def extract_email_info_with_llm_optimized(user_input: str, whatsapp_number
         # PERFORMANCE: Run LLM extraction with timeout - FIX: Run in thread pool since OpenAI client is sync
         def llm_call():
             return openai.chat.completions.create(
-                model="gpt-4.1ß",
+                model="gpt-4.1",
                 messages=[
                     {"role": "system", "content": "You extract structured email instructions and generate professional emails signed as Rahul Menon. Use the provided memory context to personalize responses based on user preferences and past interactions."},
                     {"role": "user", "content": enhanced_prompt}
