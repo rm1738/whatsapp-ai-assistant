@@ -1,268 +1,307 @@
-# WhatsApp AI Assistant - Complete Guide
+# WhatsApp AI Assistant with Google Meet Integration
 
-## What This WhatsApp Agent Currently Does
+A powerful WhatsApp AI assistant built with FastAPI that handles email drafting, contact management, calendar operations with Google Meet support, places search, web search, and voice transcription.
 
-### Overview
-This is an intelligent WhatsApp assistant that acts as your personal digital secretary. You can send it messages just like texting a friend, and it will help you manage your daily tasks, contacts, calendar, and find information. It understands natural language, so you don't need to learn special commands.
+## 🚀 Features
 
-### Core Capabilities
+### 📧 Email Management
+- Draft and send emails via WhatsApp
+- Smart recipient lookup from Google Sheets
+- AI-powered email composition
+- Email revision and approval workflow
 
-#### 📧 **Email Management**
-- **Send Professional Emails**: Just tell it "Send an email to John about the meeting tomorrow" and it will draft a professional email
-- **Smart Contact Lookup**: If you say "Email Sarah about the project", it will automatically find Sarah's email from your contacts
-- **Email Drafting & Review**: It shows you the email before sending, so you can approve or ask for changes
-- **Professional Tone**: All emails are automatically written in a professional business tone with proper signatures
+### 👥 Contact Management  
+- Add, update, delete contacts in Google Sheets
+- Smart contact lookup and search
+- Bulk contact operations
+- Contact information retrieval
 
-**Example Conversations:**
-- "Send an email to my client about the delay in delivery"
-- "Email the team about tomorrow's meeting being moved to 3pm"
-- "Draft an email to HR about my vacation request"
+### 📅 Calendar Management with Google Meet
+- **NEW**: Google Meet integration for video meetings
+- Create single and bulk calendar events
+- Natural language date/time parsing
+- Event listing, updating, and deletion
+- Automatic Google Meet link generation
+- Smart attendee management
 
-#### 👥 **Contact Management**
-- **Add New Contacts**: "Add John Smith, email john@company.com, phone 555-1234"
-- **Look Up Information**: "What's Sarah's phone number?" or "Get me John's email"
-- **Update Contacts**: "Update John's email to john.new@company.com"
-- **Delete Contacts**: "Remove old contact Mike from my list"
-- **View All Contacts**: "Show me all my contacts" - displays your entire contact list
+### 🎥 Google Meet Features
+- Automatic Google Meet link creation when requested
+- Natural language detection ("video call", "online meeting", "virtual meeting")
+- Meet links automatically shared with attendees
+- Support for both single and bulk event creation
+- Integration with Google Calendar API
 
-**Example Conversations:**
-- "Add my new colleague Maria, email maria@tech.com"
-- "What's the phone number for Dr. Smith?"
-- "Show me all my contacts"
+### 🗺️ Places Search
+- Find nearby restaurants, shops, services
+- Google Places API integration
+- Location-based recommendations
+- Detailed place information
 
-#### 📅 **Calendar Management**
-- **Create Meetings**: "Create a meeting tomorrow at 2pm with the team"
-- **Bulk Event Creation**: "Schedule three meetings: standup tomorrow 9am, client call Friday 2pm, review Monday 10am"
-- **View Schedule**: "What's on my calendar today?" or "Show my events this week"
-- **Delete Events**: "Delete my 3pm meeting" or "Cancel all my meetings for next week"
-- **Smart Date Understanding**: Understands "tomorrow", "next Friday", "upcoming week", etc.
+### 🔍 Web Search
+- Enhanced search with context awareness
+- Query optimization using user preferences
+- Tavily API integration for real-time results
+- Search insights and analytics
 
-**Example Conversations:**
-- "Create a lunch meeting with John tomorrow at 1pm"
-- "What meetings do I have this week?"
-- "Delete all my meetings for the upcoming week"
-- "Cancel my appointment on Monday"
+### 🎤 Voice Support
+- Voice message transcription
+- OpenAI Whisper integration
+- Natural language processing
 
-#### 🗺️ **Location & Place Finding**
-- **Find Nearby Places**: "What are the best sushi restaurants near me?"
-- **Location-Specific Search**: "Find good coffee shops in Downtown Dubai"
-- **Get Directions**: "Get me the Google Maps link for Burj Khalifa"
-- **Business Information**: Can find addresses, ratings, and contact details
+### 🧠 Memory System
+- Hybrid memory (Supabase + Pinecone)
+- User preference learning
+- Conversation context retention
+- Personalized responses
 
-**Example Conversations:**
-- "Find the best pizza places in Marina"
-- "Where can I get good coffee near DIFC?"
-- "Get me the location of Dubai Mall"
+## 📅 Google Meet Usage Examples
 
-#### 🔍 **Web Search & Information**
-- **Real-Time Information**: "What's the latest news about electric vehicles?"
-- **How-To Guides**: "How do I write a resignation letter?"
-- **Research**: "What are the pros and cons of remote work?"
-- **Current Events**: "Latest updates on climate change"
+### Natural Language Commands
 
-**Example Conversations:**
-- "What's the weather like today?"
-- "How do I prepare for a job interview?"
-- "What are the best productivity apps?"
+**Create meetings with Google Meet:**
+```
+✅ "create meeting tomorrow 2pm with Google Meet"
+✅ "schedule video call with John on Friday 1pm to 2pm"
+✅ "book online meeting for Monday 10am"
+✅ "create virtual team meeting tomorrow 3pm"
+✅ "schedule video conference with client"
+✅ "set up online standup Friday 9am"
+```
 
-#### 🎤 **Voice Message Support**
-- **Audio Transcription**: Send voice messages and it will convert them to text and process your request
-- **Natural Speech**: Speak naturally - it understands conversational language
-- **Hands-Free Operation**: Perfect for when you're driving or busy
+**Regular meetings (no Google Meet):**
+```
+❌ "create meeting tomorrow 2pm" (no video keywords)
+❌ "schedule lunch with John on Friday" (in-person meeting)
+```
 
-#### 🧠 **Smart Memory & Learning**
-- **Remembers Your Preferences**: Learns your email style, favorite locations, and communication patterns
-- **Context Awareness**: Understands follow-up questions and maintains conversation context
-- **Personalized Responses**: Adapts to your communication style over time
+**Other platforms (not supported):**
+```
+❌ "schedule Zoom call with client" (different platform)
+❌ "create Teams meeting tomorrow" (different platform)
+```
 
-### How It Works (Simple Explanation)
+### What Triggers Google Meet
 
-1. **You Send a Message**: Text or voice message in natural language
-2. **AI Understanding**: The system uses advanced AI to understand what you want
-3. **Action Execution**: It performs the task (sends email, creates calendar event, etc.)
-4. **Confirmation**: You get a confirmation with details of what was done
-5. **Learning**: It remembers your preferences for future interactions
+The system automatically detects Google Meet requests when you mention:
+- "Google Meet", "google meet", "meet"
+- "video call", "video meeting"
+- "online meeting", "virtual meeting"  
+- "video conference", "online conference"
 
-### Security & Privacy
-- All data is securely stored and encrypted
-- Only you have access to your information
-- No data is shared with third parties
-- Professional-grade security standards
+### Google Meet Features
 
----
+- **Automatic Link Generation**: Google Meet links are created automatically
+- **Attendee Sharing**: Links are automatically shared with all attendees
+- **Calendar Integration**: Meetings appear in Google Calendar with Meet links
+- **WhatsApp Notification**: You receive the Meet link via WhatsApp
+- **Bulk Support**: Works with bulk calendar creation too
 
-## Business Applications & Expansion Opportunities
+## 🛠️ Setup
 
-### Current Business Value
+### Prerequisites
+- Python 3.8+
+- Google Cloud Project with Calendar API enabled
+- Twilio WhatsApp Business Account
+- OpenAI API key
+- Supabase account
+- Pinecone account
+- Tavily API key
 
-#### **For Executives & Managers**
-- **Time Saving**: Reduces email drafting time by 80%
-- **Never Miss Appointments**: Automated calendar management
-- **Quick Information Access**: Instant contact lookup and web research
-- **Professional Communication**: Ensures all emails maintain professional standards
+### Environment Variables
+```env
+# Core APIs
+OPENAI_API_KEY=your_openai_key
+TWILIO_ACCOUNT_SID=your_twilio_sid
+TWILIO_AUTH_TOKEN=your_twilio_token
+TWILIO_WHATSAPP_NUMBER=your_whatsapp_number
 
-#### **For Sales Teams**
-- **Client Contact Management**: Easy access to client information
-- **Meeting Scheduling**: Quick appointment setting with prospects
-- **Follow-up Automation**: Streamlined client communication
-- **Location Intelligence**: Find meeting venues and client locations
+# Google Services
+GOOGLE_CREDENTIALS_BASE64=your_base64_encoded_credentials
+GOOGLE_TOKEN_BASE64=your_base64_encoded_oauth_token
+GOOGLE_PLACES_API_KEY=your_places_api_key
 
-#### **For Administrative Staff**
-- **Bulk Operations**: Create multiple meetings or events at once
-- **Contact Database Management**: Maintain accurate contact information
-- **Email Coordination**: Handle routine email communications
-- **Schedule Management**: Coordinate calendars across teams
+# Memory & Search
+SUPABASE_URL=your_supabase_url
+SUPABASE_KEY=your_supabase_key
+PINECONE_API_KEY=your_pinecone_key
+PINECONE_INDEX_NAME=your_index_name
+TAVILY_API_KEY=your_tavily_key
 
-### Potential Business Expansions
+# Email
+RESEND_API_KEY=your_resend_key
+```
 
-#### 🏢 **Enterprise Features**
-- **Team Collaboration**: 
-  - "Schedule a team meeting with John, Sarah, and Mike for tomorrow"
-  - "Send the quarterly report to all department heads"
-  - "Book the conference room for Friday's presentation"
+### Installation
+```bash
+# Clone repository
+git clone <repository-url>
+cd whatsapp-ai-assistant
 
-- **CRM Integration**: 
-  - Connect to Salesforce, HubSpot, or other CRM systems
-  - "Show me all meetings with Acme Corp this month"
-  - "Update the deal status for Project Alpha"
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-- **Document Management**:
-  - "Send the contract to legal for review"
-  - "Share the presentation with the client"
-  - "Find the budget document from last quarter"
+# Install dependencies
+pip install -r requirements.txt
 
-#### 🏥 **Healthcare Applications**
-- **Appointment Scheduling**: "Book Mrs. Johnson for a check-up next Tuesday"
-- **Patient Communication**: "Send appointment reminders to today's patients"
-- **Medical Records**: "Find Dr. Smith's contact information"
-- **Emergency Protocols**: Quick access to emergency contacts and procedures
+# Set up environment variables
+cp .env.example .env
+# Edit .env with your API keys
 
-#### 🏪 **Retail & E-commerce**
-- **Inventory Management**: "Check stock levels for Product X"
-- **Customer Service**: "Send order confirmation to customer #12345"
-- **Supplier Communication**: "Email supplier about delayed shipment"
-- **Store Operations**: "Schedule staff meeting for inventory count"
+# Run the application
+python whatsapp.py
+```
 
-#### 🏗️ **Construction & Field Services**
-- **Site Coordination**: "Schedule site inspection for Monday morning"
-- **Contractor Communication**: "Send safety update to all contractors"
-- **Equipment Tracking**: "Find contact for equipment rental company"
-- **Project Updates**: "Email client about project milestone completion"
+## 🧪 Testing Google Meet Integration
 
-#### 🎓 **Education Sector**
-- **Student Communication**: "Send assignment reminders to Class 10A"
-- **Parent Updates**: "Email parents about tomorrow's school event"
-- **Staff Coordination**: "Schedule faculty meeting for curriculum review"
-- **Event Management**: "Create calendar events for exam schedule"
+Run the Google Meet test suite:
+```bash
+python test_google_meet.py
+```
 
-#### 💰 **Financial Services**
-- **Client Meetings**: "Schedule portfolio review with Mr. Anderson"
-- **Compliance Communication**: "Send regulatory update to all advisors"
-- **Market Research**: "Find latest information on cryptocurrency trends"
-- **Document Sharing**: "Send investment proposal to client"
+This will test:
+- Google Meet detection accuracy
+- Natural language parsing
+- Calendar creation flow
+- Error handling
 
-#### 🚚 **Logistics & Transportation**
-- **Delivery Coordination**: "Schedule pickup for tomorrow morning"
-- **Driver Communication**: "Send route updates to delivery team"
-- **Customer Updates**: "Email tracking information to customers"
-- **Vendor Management**: "Contact warehouse about inventory levels"
+## 📱 Usage Examples
 
-### Advanced Features for Business Growth
+### Calendar with Google Meet
+```
+User: "create video call with team tomorrow 3pm"
+Assistant: 
+📅 Event Created Successfully!
 
-#### 📊 **Analytics & Reporting**
-- **Usage Analytics**: Track most common requests and optimize workflows
-- **Performance Metrics**: Measure response times and task completion rates
-- **Business Intelligence**: Generate insights from communication patterns
-- **ROI Tracking**: Measure time and cost savings
+📋 Team Video Call
+📅 Thu, Dec 14
+🕐 3:00 PM - 4:00 PM
 
-#### 🔗 **System Integrations**
-- **ERP Systems**: Connect to SAP, Oracle, or other enterprise systems
-- **Communication Platforms**: Integrate with Slack, Microsoft Teams, Zoom
-- **Cloud Storage**: Connect to Google Drive, Dropbox, OneDrive
-- **Payment Systems**: Process invoices and payment requests
+🎥 Google Meet: https://meet.google.com/abc-defg-hij
+💡 Meeting link automatically shared with attendees
 
-#### 🤖 **AI Enhancements**
-- **Predictive Scheduling**: Suggest optimal meeting times based on patterns
-- **Smart Prioritization**: Automatically prioritize urgent communications
-- **Language Translation**: Communicate with international clients in their language
-- **Sentiment Analysis**: Detect urgency and emotional tone in messages
+✅ Added to your Google Calendar!
+```
 
-#### 🔒 **Enterprise Security**
-- **Role-Based Access**: Different permissions for different team members
-- **Audit Trails**: Complete logs of all actions and communications
-- **Compliance Features**: Meet industry-specific regulatory requirements
-- **Data Backup**: Automated backup and disaster recovery
+### Regular Calendar Event
+```
+User: "create meeting tomorrow 2pm"
+Assistant:
+📅 Event Created Successfully!
 
-### Industry-Specific Customizations
+📋 Meeting
+📅 Thu, Dec 14  
+🕐 2:00 PM - 3:00 PM
 
-#### **Real Estate**
-- Property listing management
-- Client showing scheduling
-- Market research and comparisons
-- Contract and document handling
+✅ Added to your Google Calendar!
+```
 
-#### **Legal Services**
-- Case management and scheduling
-- Client communication tracking
-- Document filing and retrieval
-- Court date management
+### Bulk Events with Mixed Google Meet
+```
+User: "create multiple meetings: standup tomorrow 9am with video, lunch Friday 12pm"
+Assistant:
+📅 Bulk Calendar Creation Summary
 
-#### **Marketing Agencies**
-- Campaign coordination
-- Client presentation scheduling
-- Creative asset management
-- Performance reporting
+✅ Successfully Created (2 events):
+📋 Standup
+   📅 Thu, Dec 14
+   🕐 9:00 AM - 10:00 AM
+   🎥 Google Meet: https://meet.google.com/xyz-uvw-rst
 
-#### **Consulting Firms**
-- Project timeline management
-- Client engagement tracking
-- Resource allocation
-- Proposal generation
+📋 Lunch
+   📅 Fri, Dec 15
+   🕐 12:00 PM - 1:00 PM
 
-### Implementation Benefits
+📊 Summary:
+• Total: 2 events
+• Created: 2
+• Failed: 0
+• Google Meet links: 1
 
-#### **Immediate ROI**
-- **Time Savings**: 2-3 hours per day per user
-- **Error Reduction**: 90% fewer scheduling conflicts
-- **Response Speed**: 10x faster information retrieval
-- **Professional Image**: Consistent, professional communication
+🎉 All events added to your Google Calendar! 1 events include Google Meet links!
+```
 
-#### **Scalability**
-- **Growing Teams**: Easily add new users and departments
-- **Multiple Locations**: Coordinate across different offices
-- **24/7 Availability**: Works around the clock in different time zones
-- **Language Support**: Communicate in multiple languages
+## 🔧 API Endpoints
 
-#### **Competitive Advantages**
-- **Customer Service**: Faster response times to client inquiries
-- **Operational Efficiency**: Streamlined internal processes
-- **Data-Driven Decisions**: Better insights from communication analytics
-- **Modern Technology**: Attract tech-savvy employees and clients
+### Calendar with Google Meet
+```http
+POST /calendar/create
+{
+  "whatsapp_number": "+1234567890",
+  "summary": "Team Meeting",
+  "start": "2024-12-14T15:00:00",
+  "end": "2024-12-14T16:00:00",
+  "attendees": ["john@example.com", "jane@example.com"],
+  "google_meet": true
+}
+```
 
----
+Response:
+```json
+{
+  "event_id": "abc123",
+  "event_link": "https://calendar.google.com/event?eid=...",
+  "google_meet_link": "https://meet.google.com/abc-defg-hij",
+  "message": "Event 'Team Meeting' created successfully! Invitations sent to 2 attendees. Google Meet link: https://meet.google.com/abc-defg-hij"
+}
+```
 
-## Getting Started
+## 🏗️ Architecture
 
-### For Business Owners
-1. **Assessment**: Evaluate current communication and scheduling challenges
-2. **Pilot Program**: Start with a small team to test effectiveness
-3. **Training**: Brief training session on natural language commands
-4. **Gradual Rollout**: Expand to more departments based on success
-5. **Optimization**: Customize features based on specific business needs
+### Google Meet Integration Flow
+1. **Natural Language Processing**: Detect video meeting keywords
+2. **Intent Extraction**: LLM identifies `calendar_conference_type: "google_meet"`
+3. **Calendar API Call**: Create event with `conferenceData` and `conferenceDataVersion=1`
+4. **Link Extraction**: Parse Google Meet link from API response
+5. **User Notification**: Send WhatsApp message with meeting details and link
 
-### For End Users
-1. **Simple Setup**: Add the WhatsApp number to your contacts
-2. **Natural Communication**: Start with simple requests like "What's on my calendar?"
-3. **Explore Features**: Try different types of requests to discover capabilities
-4. **Build Habits**: Integrate into daily workflow for maximum benefit
-5. **Provide Feedback**: Help improve the system with usage feedback
+### Performance Optimizations
+- Connection pooling for HTTP requests
+- Parallel execution for memory operations
+- Caching for Google Sheets data
+- Async/await patterns throughout
+- Thread pool for CPU-bound operations
 
-### Success Metrics
-- **Time Saved**: Measure reduction in administrative tasks
-- **Accuracy Improvement**: Track reduction in scheduling errors
-- **User Adoption**: Monitor how quickly team members embrace the tool
-- **Business Impact**: Measure improvements in client satisfaction and operational efficiency
+## 🔒 Security
 
----
+- Environment variable configuration
+- OAuth2 authentication for Google services
+- Secure token storage
+- Input sanitization
+- Rate limiting considerations
 
-*This WhatsApp AI Assistant represents the future of business communication - where natural language meets powerful automation to create unprecedented efficiency and productivity gains.* 
+## 📊 Monitoring
+
+- Health check endpoint: `/health`
+- Performance metrics tracking
+- Error logging and handling
+- Memory usage optimization
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Ensure all tests pass
+5. Submit a pull request
+
+## 📄 License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## 🆘 Support
+
+For issues and questions:
+1. Check the troubleshooting section
+2. Review the test suite results
+3. Check Google Calendar API quotas
+4. Verify OAuth token permissions include calendar scope
+
+## 🔮 Roadmap
+
+- [ ] Microsoft Teams integration
+- [ ] Zoom integration  
+- [ ] Recurring meeting support
+- [ ] Meeting room booking
+- [ ] Calendar conflict detection
+- [ ] Meeting analytics and insights 

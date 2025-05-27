@@ -922,6 +922,7 @@ Extract:
 - calendar_value (new value for calendar field updates)
 - calendar_events (for bulk creation: array of event objects with summary, start, end, description)
 - calendar_delete_targets (for bulk deletion: array of event identifiers - can be event IDs, titles, or dates)
+- calendar_conference_type (conference type: "google_meet" if user mentions Google Meet, video call, online meeting, virtual meeting, or similar; otherwise null)
 - place_query (the user's location search string for Google Places OR the specific place name when asking for details)
 - place_location (optional: a lat,lng string if user gives coordinates or "near me", else null)
 - place_detail_type (what specific detail is requested: "maps_link", "address", "phone", "hours", "website", or "all")
@@ -932,11 +933,35 @@ Extract:
 User said:
 """{user_input}"""
 
+Examples of calendar_create intent with Google Meet:
+- "create meeting tomorrow 2pm with Google Meet" → calendar_create (calendar_conference_type: "google_meet")
+- "schedule video call with John on Friday 1pm to 2pm" → calendar_create (calendar_conference_type: "google_meet", calendar_attendees: ["john@example.com"] if John's email is known)
+- "book online meeting for Monday 10am" → calendar_create (calendar_conference_type: "google_meet")
+- "create virtual team meeting tomorrow 3pm" → calendar_create (calendar_conference_type: "google_meet")
+- "schedule video conference with client" → calendar_create (calendar_conference_type: "google_meet")
+- "create meeting with google meet tomorrow" → calendar_create (calendar_conference_type: "google_meet")
+
 Examples of calendar_create intent:
 - "create meeting tomorrow 2pm" → calendar_create
 - "schedule lunch with John on Friday 1pm to 2pm" → calendar_create (calendar_attendees: ["john@example.com"] if John's email is known)
 - "book conference room and invite sarah@company.com and mike@company.com for Monday 10am" → calendar_create (calendar_attendees: ["sarah@company.com", "mike@company.com"])
 - "create team meeting tomorrow 3pm, invite the whole team" → calendar_create (calendar_attendees: [] - will need to ask for specific emails)
+- "schedule meeting with John and Sarah tomorrow 2pm" → calendar_create (calendar_attendees: ["john@example.com", "sarah@example.com"] if emails are known)
+- "create video call with John, Mike, and Sarah on Friday" → calendar_create (calendar_conference_type: "google_meet", calendar_attendees: ["john@example.com", "mike@example.com", "sarah@example.com"] if emails are known)
+- "book meeting with the client tomorrow" → calendar_create (calendar_attendees: [] - generic reference, need specific emails)
+- "schedule standup with team members" → calendar_create (calendar_attendees: [] - generic reference, need specific emails)
+
+IMPORTANT: For calendar_attendees, extract people's names mentioned in the meeting request:
+- "meeting with John" → ALWAYS extract ["John"] as attendees
+- "schedule lunch with Sarah and Mike" → ALWAYS extract ["Sarah", "Mike"] as attendees
+- "create meeting with Rahul tomorrow" → ALWAYS extract ["Rahul"] as attendees
+- "book call with John, Sarah, and Mike" → ALWAYS extract ["John", "Sarah", "Mike"] as attendees
+- "invite Rahul to meeting tomorrow" → ALWAYS extract ["Rahul"] as attendees
+- "meeting with rahul@email.com" → ALWAYS extract ["rahul@email.com"] as attendees
+- "video call with the team" → leave attendees empty (generic reference)
+- "meeting with client" → leave attendees empty (generic reference)
+- "invite john@email.com and sarah@email.com" → use the provided email addresses directly
+- Look for patterns like "with [Name]", "invite [Name]", "[Name] and [Name]", "meeting [Name]"
 
 Examples of calendar_bulk_create intent:
 - "schedule lunch with John on Friday 1pm to 2pm" → calendar_create
@@ -949,6 +974,13 @@ Examples of calendar_bulk_create intent:
 - "remove my appointment tomorrow" → calendar_delete (calendar_start: "{(current_date + timedelta(days=1)).strftime('%Y-%m-%d')}")
 
 IMPORTANT: For calendar_delete operations, ALWAYS extract the date/time information into calendar_start field, even if it's relative like "today", "tomorrow", "May 26", etc. Convert these to ISO date format (YYYY-MM-DD) using the current date context provided above.
+
+IMPORTANT: For calendar_conference_type, only set to "google_meet" if the user specifically mentions:
+- "Google Meet", "google meet", "meet"
+- "video call", "video meeting"
+- "online meeting", "virtual meeting"
+- "video conference", "online conference"
+Do NOT set it for regular meetings or if they mention other platforms like Zoom, Teams, etc.
 
 Examples of web_search intent:
 - "What is the latest in EV technology?" → web_search (search_query: "latest EV technology")
@@ -1023,6 +1055,7 @@ Respond ONLY in this JSON format:
   "calendar_value": "...",
   "calendar_events": [...],
   "calendar_delete_targets": [...],
+  "calendar_conference_type": "google_meet" or null,
   "place_query": "...",
   "place_location": "...",
   "place_detail_type": "...",
@@ -2138,15 +2171,39 @@ async def handle_calendar_auth_intent_optimized(data: dict, from_number: str):
         await send_whatsapp_message(from_number, "❌ Error checking calendar setup. Please try again.")
 
 async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
-    """OPTIMIZED: Handle calendar event creation with actual Google Calendar API"""
+    """OPTIMIZED: Handle calendar event creation with actual Google Calendar API, Google Meet support, and smart attendee lookup"""
     calendar_summary = data.get("calendar_summary")
     calendar_start = data.get("calendar_start")
     calendar_end = data.get("calendar_end")
     calendar_description = data.get("calendar_description")
     calendar_attendees = data.get("calendar_attendees", [])
+    calendar_conference_type = data.get("calendar_conference_type")
 
     if calendar_summary and calendar_start:
         try:
+            # ENHANCEMENT: Smart attendee lookup from contact names
+            final_attendees = []
+            attendee_lookup_results = []
+            
+            # Process each attendee - could be email or name
+            for attendee in calendar_attendees:
+                attendee = attendee.strip()
+                if not attendee:
+                    continue
+                
+                # Check if it's already an email address
+                if "@" in attendee:
+                    final_attendees.append(attendee)
+                    attendee_lookup_results.append(f"✅ {attendee} (email provided)")
+                else:
+                    # Try to look up email by name
+                    email = await get_email_by_name_optimized(attendee)
+                    if email:
+                        final_attendees.append(email)
+                        attendee_lookup_results.append(f"✅ {attendee} → {email}")
+                    else:
+                        attendee_lookup_results.append(f"❌ {attendee} (email not found in contacts)")
+            
             # If no end time provided, default to 1 hour later
             if not calendar_end:
                 try:
@@ -2170,18 +2227,68 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                 if calendar_description:
                     event_body['description'] = calendar_description
                 
-                # Add attendees if provided
-                if calendar_attendees:
-                    event_body['attendees'] = [{'email': email.strip()} for email in calendar_attendees if email.strip()]
+                # ENHANCEMENT: Smart attendee lookup for bulk events too
+                final_attendees = []
+                for attendee in calendar_attendees:
+                    attendee = attendee.strip()
+                    if not attendee:
+                        continue
+                    
+                    # Check if it's already an email address
+                    if "@" in attendee:
+                        final_attendees.append(attendee)
+                    else:
+                        # Try to look up email by name
+                        email = await get_email_by_name_optimized(attendee)
+                        if email:
+                            final_attendees.append(email)
+                        # Note: For bulk operations, we silently skip names without emails
+                        # to avoid cluttering the output
+                
+                # Add final attendees (with looked up emails)
+                if final_attendees:
+                    event_body['attendees'] = [{'email': email.strip()} for email in final_attendees if email.strip()]
+                
+                # Add Google Meet if requested
+                if calendar_conference_type == "google_meet":
+                    event_body['conferenceData'] = {
+                        'createRequest': {
+                            'requestId': f"meet-{int(time.time())}-{hash(calendar_summary) % 10000}",
+                            'conferenceSolutionKey': {
+                                'type': 'hangoutsMeet'
+                            }
+                        }
+                    }
                 
                 # Create event in Google Calendar
-                event = await asyncio.get_event_loop().run_in_executor(
-                    thread_pool, 
-                    lambda: service.events().insert(calendarId='primary', body=event_body).execute()
-                )
+                # Note: When using conferenceData, we need to set conferenceDataVersion=1
+                if calendar_conference_type == "google_meet":
+                    event = await asyncio.get_event_loop().run_in_executor(
+                        thread_pool, 
+                        lambda: service.events().insert(
+                            calendarId='primary', 
+                            body=event_body,
+                            conferenceDataVersion=1
+                        ).execute()
+                    )
+                else:
+                    event = await asyncio.get_event_loop().run_in_executor(
+                        thread_pool, 
+                        lambda: service.events().insert(calendarId='primary', body=event_body).execute()
+                    )
                 
                 event_link = event.get('htmlLink', 'No link available')
                 event_id = event.get('id')
+                
+                # Extract Google Meet link if available
+                google_meet_link = None
+                if calendar_conference_type == "google_meet":
+                    conference_data = event.get('conferenceData', {})
+                    entry_points = conference_data.get('entryPoints', [])
+                    for entry_point in entry_points:
+                        if entry_point.get('entryPointType') == 'video':
+                            google_meet_link = entry_point.get('uri')
+                            break
                 
                 # Format datetime for better readability
                 try:
@@ -2202,9 +2309,28 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                     if calendar_description:
                         reply += f"📝 {calendar_description}\n"
                     
-                    if calendar_attendees:
-                        reply += f"👥 *Attendees:* {', '.join(calendar_attendees)}\n"
+                    # Enhanced attendee information with lookup results
+                    if final_attendees:
+                        reply += f"\n👥 *Attendees ({len(final_attendees)}):*\n"
+                        for result in attendee_lookup_results:
+                            reply += f"   {result}\n"
                         reply += f"📧 Invitations sent automatically\n"
+                    elif calendar_attendees:
+                        # Some attendees were requested but none found
+                        reply += f"\n⚠️ *Attendee Lookup:*\n"
+                        for result in attendee_lookup_results:
+                            reply += f"   {result}\n"
+                        reply += f"💡 Add missing contacts to your Google Sheets to auto-invite them\n"
+                    
+                    # Add Google Meet link if available
+                    if google_meet_link:
+                        reply += f"\n🎥 *Google Meet:* {google_meet_link}\n"
+                        if final_attendees:
+                            reply += f"💡 Meeting link automatically shared with attendees\n"
+                        else:
+                            reply += f"💡 Share this link with your attendees\n"
+                    elif calendar_conference_type == "google_meet":
+                        reply += f"\n⚠️ *Google Meet:* Link generation failed, but meeting created\n"
                     
                     reply += f"\n✅ Added to your Google Calendar!"
                     
@@ -2219,9 +2345,28 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                     if calendar_description:
                         reply += f"📝 {calendar_description}\n"
                     
-                    if calendar_attendees:
-                        reply += f"👥 *Attendees:* {', '.join(calendar_attendees)}\n"
+                    # Enhanced attendee information with lookup results
+                    if final_attendees:
+                        reply += f"\n👥 *Attendees ({len(final_attendees)}):*\n"
+                        for result in attendee_lookup_results:
+                            reply += f"   {result}\n"
                         reply += f"📧 Invitations sent automatically\n"
+                    elif calendar_attendees:
+                        # Some attendees were requested but none found
+                        reply += f"\n⚠️ *Attendee Lookup:*\n"
+                        for result in attendee_lookup_results:
+                            reply += f"   {result}\n"
+                        reply += f"💡 Add missing contacts to your Google Sheets to auto-invite them\n"
+                    
+                    # Add Google Meet link if available
+                    if google_meet_link:
+                        reply += f"\n🎥 *Google Meet:* {google_meet_link}\n"
+                        if final_attendees:
+                            reply += f"💡 Meeting link automatically shared with attendees\n"
+                        else:
+                            reply += f"💡 Share this link with your attendees\n"
+                    elif calendar_conference_type == "google_meet":
+                        reply += f"\n⚠️ *Google Meet:* Link generation failed, but meeting created\n"
                     
                     reply += f"\n✅ Added to your Google Calendar!"
                 
@@ -2239,6 +2384,10 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                     )
                     if calendar_description:
                         reply += f"📝 Description: {calendar_description}\n"
+                    if final_attendees:
+                        reply += f"👥 Attendees: {', '.join(final_attendees)}\n"
+                    if calendar_conference_type == "google_meet":
+                        reply += f"🎥 Google Meet: Requested\n"
                     
                     reply += f"\n💡 *Solution:* Use 'setup my calendar' to check authentication status."
                 elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
@@ -2248,7 +2397,9 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                         f"*Event Details:*\n"
                         f"📋 Title: {calendar_summary}\n"
                         f"🕐 Start: {calendar_start}\n"
-                        f"🕐 End: {calendar_end}\n\n"
+                        f"🕐 End: {calendar_end}\n"
+                        f"👥 Attendees: {', '.join(final_attendees) if final_attendees else 'None'}\n"
+                        f"🎥 Google Meet: {'Requested' if calendar_conference_type == 'google_meet' else 'Not requested'}\n\n"
                         f"💡 *Solution:* Administrator needs to regenerate the OAuth token with calendar scope."
                     )
                 else:
@@ -2260,6 +2411,8 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                         f"📋 Title: {calendar_summary}\n"
                         f"🕐 Start: {calendar_start}\n"
                         f"🕐 End: {calendar_end}\n"
+                        f"👥 Attendees: {', '.join(final_attendees) if final_attendees else 'None'}\n"
+                        f"🎥 Google Meet: {'Requested' if calendar_conference_type == 'google_meet' else 'Not requested'}\n"
                     )
             
             await send_whatsapp_message(from_number, reply)
@@ -2520,7 +2673,7 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
         await send_whatsapp_message(from_number, "Please specify which event to delete (by title, date, or event ID).")
 
 async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: str):
-    """OPTIMIZED: Handle bulk calendar event creation with error handling and summary"""
+    """OPTIMIZED: Handle bulk calendar event creation with error handling, summary, and Google Meet support"""
     calendar_events = data.get("calendar_events", [])
     
     if not calendar_events:
@@ -2544,6 +2697,7 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                     end_time = event_data.get("end")
                     description = event_data.get("description")
                     attendees = event_data.get("attendees", [])
+                    conference_type = event_data.get("conference_type")  # Support Google Meet in bulk
                     
                     if not start_time:
                         failed_events.append({
@@ -2575,11 +2729,42 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                     if attendees:
                         event_body['attendees'] = [{'email': email.strip()} for email in attendees if email.strip()]
                     
+                    # Add Google Meet if requested
+                    if conference_type == "google_meet":
+                        event_body['conferenceData'] = {
+                            'createRequest': {
+                                'requestId': f"meet-{int(time.time())}-{hash(summary) % 10000}-{i}",
+                                'conferenceSolutionKey': {
+                                    'type': 'hangoutsMeet'
+                                }
+                            }
+                        }
+                    
                     # Create event in Google Calendar
-                    event = await asyncio.get_event_loop().run_in_executor(
-                        thread_pool, 
-                        lambda: service.events().insert(calendarId='primary', body=event_body).execute()
-                    )
+                    if conference_type == "google_meet":
+                        event = await asyncio.get_event_loop().run_in_executor(
+                            thread_pool, 
+                            lambda: service.events().insert(
+                                calendarId='primary', 
+                                body=event_body,
+                                conferenceDataVersion=1
+                            ).execute()
+                        )
+                    else:
+                        event = await asyncio.get_event_loop().run_in_executor(
+                            thread_pool, 
+                            lambda: service.events().insert(calendarId='primary', body=event_body).execute()
+                        )
+                    
+                    # Extract Google Meet link if available
+                    google_meet_link = None
+                    if conference_type == "google_meet":
+                        conference_data = event.get('conferenceData', {})
+                        entry_points = conference_data.get('entryPoints', [])
+                        for entry_point in entry_points:
+                            if entry_point.get('entryPointType') == 'video':
+                                google_meet_link = entry_point.get('uri')
+                                break
                     
                     created_events.append({
                         "summary": summary,
@@ -2587,7 +2772,9 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                         "end": end_time,
                         "attendees": attendees,
                         "event_id": event.get('id'),
-                        "event_link": event.get('htmlLink', 'No link available')
+                        "event_link": event.get('htmlLink', 'No link available'),
+                        "google_meet_link": google_meet_link,
+                        "conference_type": conference_type
                     })
                     
                 except Exception as event_error:
@@ -2619,6 +2806,12 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                         if event.get('attendees'):
                             reply += f"   👥 Attendees: {', '.join(event['attendees'])}\n"
                         
+                        # Add Google Meet link if available
+                        if event.get('google_meet_link'):
+                            reply += f"   🎥 Google Meet: {event['google_meet_link']}\n"
+                        elif event.get('conference_type') == 'google_meet':
+                            reply += f"   🎥 Google Meet: Link generation failed\n"
+                        
                         reply += "\n"
                     except:
                         # Fallback to original format if parsing fails
@@ -2627,6 +2820,12 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                         
                         if event.get('attendees'):
                             reply += f"   👥 Attendees: {', '.join(event['attendees'])}\n"
+                        
+                        # Add Google Meet link if available
+                        if event.get('google_meet_link'):
+                            reply += f"   🎥 Google Meet: {event['google_meet_link']}\n"
+                        elif event.get('conference_type') == 'google_meet':
+                            reply += f"   🎥 Google Meet: Link generation failed\n"
                         
                         reply += "\n"
             
@@ -2640,14 +2839,20 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
             total_events = len(calendar_events)
             success_count = len(created_events)
             failure_count = len(failed_events)
+            google_meet_count = sum(1 for event in created_events if event.get('google_meet_link'))
             
             reply += f"📊 *Summary:*\n"
             reply += f"• Total: {total_events} events\n"
             reply += f"• Created: {success_count}\n"
-            reply += f"• Failed: {failure_count}\n\n"
+            reply += f"• Failed: {failure_count}\n"
+            if google_meet_count > 0:
+                reply += f"• Google Meet links: {google_meet_count}\n"
+            reply += "\n"
             
             if success_count > 0:
                 reply += "🎉 All events added to your Google Calendar!"
+                if google_meet_count > 0:
+                    reply += f" {google_meet_count} events include Google Meet links!"
             
         except Exception as calendar_error:
             print(f"Google Calendar API error: {calendar_error}")
@@ -3125,9 +3330,10 @@ async def create_calendar_event(
     end: str,
     description: Optional[str] = None,
     all_day: bool = False,
-    attendees: Optional[List[str]] = None
+    attendees: Optional[List[str]] = None,
+    google_meet: bool = False
 ):
-    """Create a new calendar event"""
+    """Create a new calendar event with optional Google Meet integration"""
     try:
         service = get_calendar_service(whatsapp_number)
         
@@ -3144,11 +3350,39 @@ async def create_calendar_event(
         if attendees:
             event_body['attendees'] = [{'email': email.strip()} for email in attendees if email.strip()]
         
+        # Add Google Meet if requested
+        if google_meet:
+            event_body['conferenceData'] = {
+                'createRequest': {
+                    'requestId': f"meet-{int(time.time())}-{hash(summary) % 10000}",
+                    'conferenceSolutionKey': {
+                        'type': 'hangoutsMeet'
+                    }
+                }
+            }
+        
         # Create event in primary calendar
-        event = service.events().insert(calendarId='primary', body=event_body).execute()
+        if google_meet:
+            event = service.events().insert(
+                calendarId='primary', 
+                body=event_body,
+                conferenceDataVersion=1
+            ).execute()
+        else:
+            event = service.events().insert(calendarId='primary', body=event_body).execute()
         
         event_link = event.get('htmlLink', 'No link available')
         event_id = event.get('id')
+        
+        # Extract Google Meet link if available
+        google_meet_link = None
+        if google_meet:
+            conference_data = event.get('conferenceData', {})
+            entry_points = conference_data.get('entryPoints', [])
+            for entry_point in entry_points:
+                if entry_point.get('entryPointType') == 'video':
+                    google_meet_link = entry_point.get('uri')
+                    break
         
         response_data = {
             "event_id": event_id,
@@ -3159,6 +3393,12 @@ async def create_calendar_event(
         if attendees:
             response_data["attendees"] = attendees
             response_data["message"] += f" Invitations sent to {len(attendees)} attendees."
+        
+        if google_meet_link:
+            response_data["google_meet_link"] = google_meet_link
+            response_data["message"] += f" Google Meet link: {google_meet_link}"
+        elif google_meet:
+            response_data["message"] += " Google Meet was requested but link generation failed."
         
         return response_data
         
