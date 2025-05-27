@@ -845,54 +845,18 @@ Extract:
 - place_detail_type (what specific detail is requested: "maps_link", "address", "phone", "hours", "website", or "all")
 - search_query (the user's web search query for general information)
 - memory_query (what the user wants to know about their past actions: "emails", "places", "meetings", "contacts", or "all")
+- calendar_attendees (for calendar events: array of email addresses to invite to the event)
 
 User said:
 """{user_input}"""
 
-Examples of calendar_bulk_create intent:
-- "Create three meetings: Team standup tomorrow 9am, Client call Friday 2pm, and Review session next Monday 10am" → calendar_bulk_create (calendar_events: [{{"summary": "Team standup", "start": "...", "end": "..."}}, {{"summary": "Client call", "start": "...", "end": "..."}}, {{"summary": "Review session", "start": "...", "end": "..."}}])
-- "Schedule multiple events: Lunch with John today 1pm, Gym session tomorrow 6pm, and Doctor appointment Thursday 3pm" → calendar_bulk_create
-- "Add these meetings to my calendar: Project kickoff Monday 10am to 11am, Budget review Tuesday 2pm to 3pm" → calendar_bulk_create
-
-Examples of calendar_bulk_delete intent:
-- "Delete my meetings for today and tomorrow" → calendar_bulk_delete (calendar_delete_targets: ["{current_date_str}", "{(current_date + timedelta(days=1)).strftime('%Y-%m-%d')}"])
-- "Remove these events: Team standup, Client call, and Budget review" → calendar_bulk_delete (calendar_delete_targets: ["Team standup", "Client call", "Budget review"])
-- "Delete events with IDs abc123, def456, and ghi789" → calendar_bulk_delete (calendar_delete_targets: ["abc123", "def456", "ghi789"])
-- "Cancel all my meetings this week" → calendar_bulk_delete (calendar_delete_targets: ["this week"])
-- "Delete all my meetings for the upcoming week" → calendar_bulk_delete (calendar_delete_targets: ["upcoming week"])
-- "Remove my events for next week" → calendar_bulk_delete (calendar_delete_targets: ["next week"])
-- "Cancel meetings for the coming week" → calendar_bulk_delete (calendar_delete_targets: ["coming week"])
-- "Delete all appointments next Monday" → calendar_bulk_delete (calendar_delete_targets: ["next Monday"])
-- "Clear my calendar for tomorrow" → calendar_bulk_delete (calendar_delete_targets: ["tomorrow"])
-- "Remove all events this Friday" → calendar_bulk_delete (calendar_delete_targets: ["this Friday"])
-- "Delete meetings for the following week" → calendar_bulk_delete (calendar_delete_targets: ["following week"])
-- "Cancel everything for the next 7 days" → calendar_bulk_delete (calendar_delete_targets: ["next 7 days"])
-- "Delete all my meetings" → calendar_bulk_delete (calendar_delete_targets: ["all my meetings"])
-- "Remove all events" → calendar_bulk_delete (calendar_delete_targets: ["all events"])
-- "Cancel everything" → calendar_bulk_delete (calendar_delete_targets: ["everything"])
-- "Clear my calendar" → calendar_bulk_delete (calendar_delete_targets: ["all my meetings"])
-
-Examples of place_details intent (asking for specific info about a known place):
-- "Can I get the Google Maps location for Padel Pro Jumeirah Park?" → place_details (place_query: "Padel Pro Jumeirah Park", place_detail_type: "maps_link")
-- "What's the address of Burj Khalifa?" → place_details (place_query: "Burj Khalifa", place_detail_type: "address")
-- "Get me the phone number for Dubai Mall" → place_details (place_query: "Dubai Mall", place_detail_type: "phone")
-- "I want the Google Maps link for that restaurant" → place_details (place_query: "restaurant", place_detail_type: "maps_link")
-- "Show me the location of Padel Pro One Central" → place_details (place_query: "Padel Pro One Central", place_detail_type: "maps_link")
-
-Examples of find_place intent (searching for places):
-- "What are the top sushi spots near me?" → find_place (place_query: "sushi spots", place_location: "near me")
-- "Find best pizza in Downtown Dubai." → find_place (place_query: "best pizza", place_location: "Downtown Dubai")
-- "Show me vegan restaurants at 25.1972,55.2744" → find_place (place_query: "vegan restaurants", place_location: "25.1972,55.2744")
-- "Where can I find good coffee shops?" → find_place (place_query: "coffee shops", place_location: null)
-- "List Real Estate Firms Near me in Dubai" → find_place (place_query: "Real Estate Firms", place_location: "Dubai")
-- "Find gyms in Marina" → find_place (place_query: "gyms", place_location: "Marina")
-- "Show me restaurants near Business Bay" → find_place (place_query: "restaurants", place_location: "Business Bay")
-- "Best hotels in Dubai Marina" → find_place (place_query: "best hotels", place_location: "Dubai Marina")
-- "Find pharmacies near me in Jumeirah" → find_place (place_query: "pharmacies", place_location: "Jumeirah")
-
-Examples of calendar intents (using current date context):
-- "setup my calendar" or "connect calendar" → calendar_auth
+Examples of calendar_create intent:
 - "create meeting tomorrow 2pm" → calendar_create
+- "schedule lunch with John on Friday 1pm to 2pm" → calendar_create (calendar_attendees: ["john@example.com"] if John's email is known)
+- "book conference room and invite sarah@company.com and mike@company.com for Monday 10am" → calendar_create (calendar_attendees: ["sarah@company.com", "mike@company.com"])
+- "create team meeting tomorrow 3pm, invite the whole team" → calendar_create (calendar_attendees: [] - will need to ask for specific emails)
+
+Examples of calendar_bulk_create intent:
 - "schedule lunch with John on Friday 1pm to 2pm" → calendar_create
 - "list my events" or "show my calendar" → calendar_list
 - "what's on my calendar today" → calendar_list
@@ -965,6 +929,7 @@ Respond ONLY in this JSON format:
   "calendar_start": "...",
   "calendar_end": "...",
   "calendar_description": "...",
+  "calendar_attendees": [...],
   "calendar_event_id": "...",
   "calendar_field": "...",
   "calendar_value": "...",
@@ -2086,6 +2051,7 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
     calendar_start = data.get("calendar_start")
     calendar_end = data.get("calendar_end")
     calendar_description = data.get("calendar_description")
+    calendar_attendees = data.get("calendar_attendees", [])
 
     if calendar_summary and calendar_start:
         try:
@@ -2111,6 +2077,10 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                 
                 if calendar_description:
                     event_body['description'] = calendar_description
+                
+                # Add attendees if provided
+                if calendar_attendees:
+                    event_body['attendees'] = [{'email': email.strip()} for email in calendar_attendees if email.strip()]
                 
                 # Create event in Google Calendar
                 event = await asyncio.get_event_loop().run_in_executor(
@@ -2140,6 +2110,10 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                     if calendar_description:
                         reply += f"📝 {calendar_description}\n"
                     
+                    if calendar_attendees:
+                        reply += f"👥 *Attendees:* {', '.join(calendar_attendees)}\n"
+                        reply += f"📧 Invitations sent automatically\n"
+                    
                     reply += f"\n✅ Added to your Google Calendar!"
                     
                 except:
@@ -2152,6 +2126,10 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                     
                     if calendar_description:
                         reply += f"📝 {calendar_description}\n"
+                    
+                    if calendar_attendees:
+                        reply += f"👥 *Attendees:* {', '.join(calendar_attendees)}\n"
+                        reply += f"📧 Invitations sent automatically\n"
                     
                     reply += f"\n✅ Added to your Google Calendar!"
                 
@@ -2473,6 +2451,7 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                     start_time = event_data.get("start")
                     end_time = event_data.get("end")
                     description = event_data.get("description")
+                    attendees = event_data.get("attendees", [])
                     
                     if not start_time:
                         failed_events.append({
@@ -2500,6 +2479,10 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                     if description:
                         event_body['description'] = description
                     
+                    # Add attendees if provided
+                    if attendees:
+                        event_body['attendees'] = [{'email': email.strip()} for email in attendees if email.strip()]
+                    
                     # Create event in Google Calendar
                     event = await asyncio.get_event_loop().run_in_executor(
                         thread_pool, 
@@ -2510,6 +2493,7 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                         "summary": summary,
                         "start": start_time,
                         "end": end_time,
+                        "attendees": attendees,
                         "event_id": event.get('id'),
                         "event_link": event.get('htmlLink', 'No link available')
                     })
@@ -2538,11 +2522,21 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                         
                         reply += f"📋 *{event['summary']}*\n"
                         reply += f"   📅 {date_str}\n"
-                        reply += f"   🕐 {time_str}\n\n"
+                        reply += f"   🕐 {time_str}\n"
+                        
+                        if event.get('attendees'):
+                            reply += f"   👥 Attendees: {', '.join(event['attendees'])}\n"
+                        
+                        reply += "\n"
                     except:
                         # Fallback to original format if parsing fails
                         reply += f"📋 *{event['summary']}*\n"
-                        reply += f"   🕐 {event['start']} → {event['end']}\n\n"
+                        reply += f"   🕐 {event['start']} → {event['end']}\n"
+                        
+                        if event.get('attendees'):
+                            reply += f"   👥 Attendees: {', '.join(event['attendees'])}\n"
+                        
+                        reply += "\n"
             
             if failed_events:
                 reply += f"❌ *Failed to Create ({len(failed_events)} events):*\n"
@@ -3038,7 +3032,8 @@ async def create_calendar_event(
     start: str,
     end: str,
     description: Optional[str] = None,
-    all_day: bool = False
+    all_day: bool = False,
+    attendees: Optional[List[str]] = None
 ):
     """Create a new calendar event"""
     try:
@@ -3053,17 +3048,27 @@ async def create_calendar_event(
         if description:
             event_body['description'] = description
         
+        # Add attendees if provided
+        if attendees:
+            event_body['attendees'] = [{'email': email.strip()} for email in attendees if email.strip()]
+        
         # Create event in primary calendar
         event = service.events().insert(calendarId='primary', body=event_body).execute()
         
         event_link = event.get('htmlLink', 'No link available')
         event_id = event.get('id')
         
-        return {
+        response_data = {
             "event_id": event_id,
             "event_link": event_link,
             "message": f"Event '{summary}' created successfully!"
         }
+        
+        if attendees:
+            response_data["attendees"] = attendees
+            response_data["message"] += f" Invitations sent to {len(attendees)} attendees."
+        
+        return response_data
         
     except HttpError as e:
         if e.resp.status == 403:
