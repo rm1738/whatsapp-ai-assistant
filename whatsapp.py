@@ -670,14 +670,14 @@ Please create a concise, informative summary that:
 5. Stays under 1500 characters total
 
 Format like this:
-🔍 **[Brief Answer]**
+🔍 *[Brief Answer]*
 
-📋 **Key Points:**
+📋 *Key Points:*
 • [Point 1]
 • [Point 2]
 • [Point 3]
 
-🔗 **Sources:**
+🔗 *Sources:*
 • [URL 1]
 • [URL 2]
 """
@@ -715,7 +715,7 @@ Format like this:
             # Fall through to fallback formatting
         
         # PERFORMANCE: Fast fallback formatting
-        fallback_response = f"🔍 **Search Results for:** {message}\n\n"
+        fallback_response = f"🔍 *Search Results for:* {message}\n\n"
         
         if answer:
             # Truncate answer if too long
@@ -724,7 +724,7 @@ Format like this:
         
         # Add top 2 results with truncated content
         if results:
-            fallback_response += "📋 **Top Results:**\n"
+            fallback_response += "📋 *Top Results:*\n"
             for i, result in enumerate(results[:2], 1):
                 title = result.get("title", "No title")
                 url = result.get("url", "")
@@ -1207,10 +1207,10 @@ async def get_all_contacts_optimized() -> str:
         records = await get_cached_sheet_records()
         
         if not records:
-            return "📋 **Your Contact List**\n\n❌ No contacts found in your Google Sheets."
+            return "📋 *Your Contact List*\n\n❌ No contacts found in your Google Sheets."
         
         # Format contacts for WhatsApp display
-        reply = f"📋 **Your Contact List** ({len(records)} contacts)\n\n"
+        reply = f"📋 *Your Contact List* ({len(records)} contacts)\n\n"
         
         for i, record in enumerate(records, 1):
             name = record.get('full_name', 'Unknown')
@@ -1218,7 +1218,7 @@ async def get_all_contacts_optimized() -> str:
             phone = str(record.get('phone_number', '') or '')  # Convert to string first
             
             # Format each contact entry
-            reply += f"👤 **{name}**\n"
+            reply += f"👤 *{name}*\n"
             
             if email and email.strip() and email.lower() != 'n/a':
                 reply += f"   📧 {email}\n"
@@ -1238,7 +1238,7 @@ async def get_all_contacts_optimized() -> str:
         
         # Add helpful footer if not truncated
         if len(reply) <= 1400:
-            reply += "💡 **Commands:**\n"
+            reply += "💡 *Commands:*\n"
             reply += "• 'lookup [name]' - Get specific contact info\n"
             reply += "• 'add contact [name], [email], [phone]' - Add new contact\n"
             reply += "• 'update [name] email to [new email]' - Update contact"
@@ -1817,20 +1817,20 @@ async def handle_place_intent_optimized(data: dict, from_number: str):
                 if detail_type == "maps_link":
                     maps_link = place.get('maps_link')
                     if maps_link:
-                        reply = f"📍 **{name}**\n🗺️ Google Maps: {maps_link}"
+                        reply = f"📍 *{name}*\n🗺️ Google Maps: {maps_link}"
                     else:
                         reply = f"Sorry, I couldn't get the Google Maps link for {name}."
                 
                 elif detail_type == "address":
                     address = place.get('formatted_address', 'Address not available')
-                    reply = f"📍 **{name}**\n🏠 Address: {address}"
+                    reply = f"📍 *{name}*\n🏠 Address: {address}"
                 
                 elif detail_type == "all":
                     address = place.get('formatted_address', 'Address not available')
                     rating = place.get('rating')
                     maps_link = place.get('maps_link')
                     
-                    reply = f"📍 **{name}**\n🏠 Address: {address}"
+                    reply = f"📍 *{name}*\n🏠 Address: {address}"
                     if rating:
                         reply += f"\n⭐ Rating: {rating}"
                     if maps_link:
@@ -1840,7 +1840,7 @@ async def handle_place_intent_optimized(data: dict, from_number: str):
                     # Default to maps link for other detail types
                     maps_link = place.get('maps_link')
                     if maps_link:
-                        reply = f"📍 **{name}**\n🗺️ Google Maps: {maps_link}"
+                        reply = f"📍 *{name}*\n🗺️ Google Maps: {maps_link}"
                     else:
                         reply = f"Sorry, I couldn't get that information for {name}."
             
@@ -1853,7 +1853,7 @@ async def handle_place_intent_optimized(data: dict, from_number: str):
                     maps_link = place.get('maps_link')
                     
                     rating_str = f" (⭐{rating})" if rating else ""
-                    reply += f"{i}. **{name}**{rating_str}\n"
+                    reply += f"{i}. *{name}*{rating_str}\n"
                     if maps_link:
                         reply += f"   🗺️ {maps_link}\n\n"
                     else:
@@ -1908,7 +1908,7 @@ async def handle_memory_query_intent_optimized(data: dict, from_number: str):
                     email_conversations = [conv for conv in conversations if conv.get('intent') == 'send_email']
                     
                     if email_conversations:
-                        reply = "📧 **Yes, you sent emails today!**\n\n"
+                        reply = "📧 *Yes, you sent emails today!*\n\n"
                         for i, conv in enumerate(email_conversations[:5], 1):
                             message = conv.get('message_text', '')
                             created_at = conv.get('created_at', '')
@@ -1923,16 +1923,16 @@ async def handle_memory_query_intent_optimized(data: dict, from_number: str):
                             # Extract recipient from message
                             if "to " in message.lower():
                                 recipient_part = message.lower().split("to ")[1].split(" ")[0]
-                                reply += f"🕐 **{time_str}** - Email to {recipient_part.title()}\n"
+                                reply += f"🕐 *{time_str}* - Email to {recipient_part.title()}\n"
                                 reply += f"   📝 {message[:80]}{'...' if len(message) > 80 else ''}\n\n"
                             else:
-                                reply += f"🕐 **{time_str}** - {message[:100]}{'...' if len(message) > 100 else ''}\n\n"
+                                reply += f"🕐 *{time_str}* - {message[:100]}{'...' if len(message) > 100 else ''}\n\n"
                     else:
-                        reply = "📧 **No emails sent today.** You haven't sent any emails recently."
+                        reply = "📧 *No emails sent today.* You haven't sent any emails recently."
                 
                 # ... other memory query types would be handled similarly
                 else:
-                    reply = "📋 **Memory query not yet implemented for this type.**"
+                    reply = "📋 *Memory query not yet implemented for this type.*"
                 
             except asyncio.TimeoutError:
                 reply = "⏱️ Memory query timed out. Please try again."
@@ -2023,19 +2023,19 @@ async def handle_calendar_auth_intent_optimized(data: dict, from_number: str):
             
             # If we get here, calendar is working
             reply = (
-                "📅 **Calendar Already Connected!**\n\n"
+                "📅 *Calendar Already Connected!*\n\n"
                 "✅ Your Google Calendar is already set up and working!\n"
                 "🔗 Using the same authentication as Google Sheets.\n\n"
-                "**Available Calendar Commands:**\n"
+                "*Available Calendar Commands:*\n"
                 "📋 'create meeting tomorrow 2pm' - Create events\n"
                 "📅 'list my events' - Show upcoming events\n"
                 "🗑️ 'delete my meeting' - Remove events\n"
                 "🔄 'update my meeting title to Team Sync' - Modify events\n\n"
-                "**Smart Features:**\n"
+                "*Smart Features:*\n"
                 "🕐 Natural time parsing (tomorrow, next week, etc.)\n"
                 "📱 Real-time sync with Google Calendar\n"
                 "🎯 Automatic event duration (defaults to 1 hour)\n\n"
-                "💡 **Try it now:** Say 'create meeting tomorrow 2pm' to test!"
+                "💡 *Try it now:* Say 'create meeting tomorrow 2pm' to test!"
             )
             
         except Exception as auth_error:
@@ -2044,34 +2044,34 @@ async def handle_calendar_auth_intent_optimized(data: dict, from_number: str):
             # Check if it's a scope issue (token doesn't have calendar permission)
             if "insufficient" in str(auth_error).lower() or "scope" in str(auth_error).lower():
                 reply = (
-                    "📅 **Calendar Scope Missing**\n\n"
+                    "📅 *Calendar Scope Missing*\n\n"
                     "❌ Your current Google token doesn't include calendar permissions.\n\n"
-                    "**What happened:**\n"
+                    "*What happened:*\n"
                     "Your Google Sheets authentication is working, but it was created before calendar features were added.\n\n"
-                    "**Solution:**\n"
+                    "*Solution:*\n"
                     "The administrator needs to regenerate the OAuth token with calendar permissions included.\n\n"
-                    "**Technical Details:**\n"
+                    "*Technical Details:*\n"
                     "• Current token has: Google Sheets access\n"
                     "• Needed: Google Sheets + Calendar access\n"
                     "• Required scope: `https://www.googleapis.com/auth/calendar`\n\n"
-                    "💡 **For Admin:** Re-run the OAuth flow with updated scopes and update the GOOGLE_TOKEN_BASE64 environment variable."
+                    "💡 *For Admin:* Re-run the OAuth flow with updated scopes and update the GOOGLE_TOKEN_BASE64 environment variable."
                 )
             else:
                 # Other authentication issues
                 reply = (
-                    "📅 **Calendar Authentication Issue**\n\n"
+                    "📅 *Calendar Authentication Issue*\n\n"
                     "❌ There's an issue with calendar authentication.\n\n"
-                    "**Error Details:**\n"
+                    "*Error Details:*\n"
                     f"{str(auth_error)}\n\n"
-                    "**Possible Solutions:**\n"
-                    "1. **Token Expired:** The OAuth token may need refreshing\n"
-                    "2. **Missing Permissions:** Calendar scope may not be included\n"
-                    "3. **Service Account:** May need calendar API enabled\n\n"
-                    "**For Admin:**\n"
+                    "*Possible Solutions:*\n"
+                    "1. *Token Expired:* The OAuth token may need refreshing\n"
+                    "2. *Missing Permissions:* Calendar scope may not be included\n"
+                    "3. *Service Account:* May need calendar API enabled\n\n"
+                    "*For Admin:*\n"
                     "• Check if calendar API is enabled in Google Cloud Console\n"
                     "• Verify OAuth token includes calendar scope\n"
                     "• Try regenerating the authentication token\n\n"
-                    "💡 **Note:** Google Sheets is working, so the base authentication is fine."
+                    "💡 *Note:* Google Sheets is working, so the base authentication is fine."
                 )
         
         await send_whatsapp_message(from_number, reply)
@@ -2131,8 +2131,8 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                     time_str = f"{start_dt.strftime('%I:%M %p')} - {end_dt.strftime('%I:%M %p')}"
                     
                     reply = (
-                        f"📅 **Event Created Successfully!**\n\n"
-                        f"📋 **{calendar_summary}**\n"
+                        f"📅 *Event Created Successfully!*\n\n"
+                        f"📋 *{calendar_summary}*\n"
                         f"📅 {date_str}\n"
                         f"🕐 {time_str}\n"
                     )
@@ -2145,8 +2145,8 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                 except:
                     # Fallback to original format if parsing fails
                     reply = (
-                        f"📅 **Event Created Successfully!**\n\n"
-                        f"📋 **{calendar_summary}**\n"
+                        f"📅 *Event Created Successfully!*\n\n"
+                        f"📋 *{calendar_summary}*\n"
                         f"🕐 {calendar_start} - {calendar_end}\n"
                     )
                     
@@ -2160,9 +2160,9 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                 # Check if it's an authentication error
                 if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
                     reply = (
-                        f"📅 **Calendar Authentication Required**\n\n"
+                        f"📅 *Calendar Authentication Required*\n\n"
                         f"I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
-                        f"**Event Details (saved for when you connect):**\n"
+                        f"*Event Details (saved for when you connect):*\n"
                         f"📋 Title: {calendar_summary}\n"
                         f"🕐 Start: {calendar_start}\n"
                         f"🕐 End: {calendar_end}\n"
@@ -2170,23 +2170,23 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                     if calendar_description:
                         reply += f"📝 Description: {calendar_description}\n"
                     
-                    reply += f"\n💡 **Solution:** Use 'setup my calendar' to check authentication status."
+                    reply += f"\n💡 *Solution:* Use 'setup my calendar' to check authentication status."
                 elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
                     reply = (
-                        f"📅 **Calendar Permissions Missing**\n\n"
+                        f"📅 *Calendar Permissions Missing*\n\n"
                         f"Your Google token doesn't include calendar permissions.\n\n"
-                        f"**Event Details:**\n"
+                        f"*Event Details:*\n"
                         f"📋 Title: {calendar_summary}\n"
                         f"🕐 Start: {calendar_start}\n"
                         f"🕐 End: {calendar_end}\n\n"
-                        f"💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
+                        f"💡 *Solution:* Administrator needs to regenerate the OAuth token with calendar scope."
                     )
                 else:
                     reply = (
-                        f"❌ **Error creating calendar event**\n\n"
+                        f"❌ *Error creating calendar event*\n\n"
                         f"There was an issue with Google Calendar API:\n"
                         f"{str(calendar_error)}\n\n"
-                        f"**Event Details:**\n"
+                        f"*Event Details:*\n"
                         f"📋 Title: {calendar_summary}\n"
                         f"🕐 Start: {calendar_start}\n"
                         f"🕐 End: {calendar_end}\n"
@@ -2230,12 +2230,12 @@ async def handle_calendar_list_intent_optimized(data: dict, from_number: str):
             
             if not events:
                 reply = (
-                    "📅 **Your Calendar**\n\n"
+                    "📅 *Your Calendar*\n\n"
                     "📋 No upcoming events found for the next 7 days.\n\n"
                     "💡 Use 'create meeting tomorrow 2pm' to add events!"
                 )
             else:
-                reply = "📅 **Your Upcoming Events:**\n\n"
+                reply = "📅 *Your Upcoming Events:*\n\n"
                 
                 for event in events:
                     start_time = event['start'].get('dateTime', event['start'].get('date'))
@@ -2253,7 +2253,7 @@ async def handle_calendar_list_intent_optimized(data: dict, from_number: str):
                     except:
                         formatted_time = start_time
                     
-                    reply += f"🕐 **{formatted_time}**\n"
+                    reply += f"🕐 *{formatted_time}*\n"
                     reply += f"📋 {summary}\n"
                     reply += f"🆔 ID: {event_id}\n\n"
                 
@@ -2264,19 +2264,19 @@ async def handle_calendar_list_intent_optimized(data: dict, from_number: str):
             # Check if it's an authentication error
             if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
                 reply = (
-                    "📅 **Calendar Authentication Required**\n\n"
+                    "📅 *Calendar Authentication Required*\n\n"
                     "I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
-                    "💡 **Solution:** Use 'setup my calendar' to check authentication status."
+                    "💡 *Solution:* Use 'setup my calendar' to check authentication status."
                 )
             elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
                 reply = (
-                    "📅 **Calendar Permissions Missing**\n\n"
+                    "📅 *Calendar Permissions Missing*\n\n"
                     "Your Google token doesn't include calendar permissions.\n\n"
-                    "💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
+                    "💡 *Solution:* Administrator needs to regenerate the OAuth token with calendar scope."
                 )
             else:
                 reply = (
-                    f"❌ **Error accessing calendar**\n\n"
+                    f"❌ *Error accessing calendar*\n\n"
                     f"There was an issue with Google Calendar API:\n"
                     f"{str(calendar_error)}\n\n"
                     f"Please try again or contact support."
@@ -2298,9 +2298,9 @@ async def handle_calendar_update_intent_optimized(data: dict, from_number: str):
         try:
             # For now, simulate update (in full implementation, call Google Calendar API)
             reply = (
-                f"📅 **Calendar Event Updated!**\n\n"
-                f"🆔 **Event ID:** {calendar_event_id}\n"
-                f"📝 **Updated {calendar_field}:** {calendar_value}\n\n"
+                f"📅 *Calendar Event Updated!*\n\n"
+                f"🆔 *Event ID:* {calendar_event_id}\n"
+                f"📝 *Updated {calendar_field}:* {calendar_value}\n\n"
                 "✅ Event has been updated successfully!"
             )
             await send_whatsapp_message(from_number, reply)
@@ -2331,8 +2331,8 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
                     )
                     
                     reply = (
-                        f"📅 **Event Deleted Successfully!**\n\n"
-                        f"🗑️ **Event removed from calendar**\n\n"
+                        f"📅 *Event Deleted Successfully!*\n\n"
+                        f"🗑️ *Event removed from calendar*\n\n"
                         "✅ Event has been removed from your Google Calendar!"
                     )
                 
@@ -2405,14 +2405,14 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
                         )
                         
                         reply = (
-                            f"📅 **Event Deleted Successfully!**\n\n"
-                            f"🗑️ **Event removed from calendar**\n\n"
+                            f"📅 *Event Deleted Successfully!*\n\n"
+                            f"🗑️ *Event removed from calendar*\n\n"
                             "✅ Event has been removed from your Google Calendar!"
                         )
                     else:
                         search_criteria = calendar_summary or f"events on {calendar_start}"
                         reply = (
-                            f"❌ **Event Not Found**\n\n"
+                            f"❌ *Event Not Found*\n\n"
                             f"I couldn't find any events matching: {search_criteria}\n\n"
                             f"💡 Try using 'list my events' to see available events, then use the Event ID to delete."
                         )
@@ -2422,25 +2422,20 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
                 # Check if it's an authentication error
                 if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
                     reply = (
-                        "📅 **Calendar Authentication Required**\n\n"
-                        "I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
-                        "💡 **Solution:** Use 'setup my calendar' to check authentication status."
+                        "📅 *Calendar Authentication Required*\n\n"
+                        f"I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
+                        f"*Event to delete:* {calendar_summary or calendar_event_id or 'specified event'}\n\n"
+                        f"💡 *Solution:* Use 'setup my calendar' to check authentication status."
                     )
                 elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
                     reply = (
-                        "📅 **Calendar Permissions Missing**\n\n"
-                        "Your Google token doesn't include calendar permissions.\n\n"
-                        "💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
-                    )
-                elif "not found" in str(calendar_error).lower():
-                    reply = (
-                        "❌ **Event Not Found**\n\n"
-                        "The event you're trying to delete doesn't exist or has already been deleted.\n\n"
-                        "💡 Use 'list my events' to see current events."
+                        f"📅 *Calendar Permissions Missing*\n\n"
+                        f"Your Google token doesn't include calendar permissions.\n\n"
+                        f"💡 *Solution:* Administrator needs to regenerate the OAuth token with calendar scope."
                     )
                 else:
                     reply = (
-                        f"❌ **Error deleting event**\n\n"
+                        f"❌ *Error deleting calendar event*\n\n"
                         f"There was an issue with Google Calendar API:\n"
                         f"{str(calendar_error)}\n\n"
                         f"Please try again or contact support."
@@ -2527,10 +2522,10 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                     })
             
             # Generate summary report
-            reply = f"📅 **Bulk Calendar Creation Summary**\n\n"
+            reply = f"📅 *Bulk Calendar Creation Summary*\n\n"
             
             if created_events:
-                reply += f"✅ **Successfully Created ({len(created_events)} events):**\n"
+                reply += f"✅ *Successfully Created ({len(created_events)} events):*\n"
                 for event in created_events:
                     # Parse and format the datetime for better readability
                     try:
@@ -2541,16 +2536,16 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
                         date_str = start_dt.strftime('%a, %b %d')
                         time_str = f"{start_dt.strftime('%I:%M %p')} - {end_dt.strftime('%I:%M %p')}"
                         
-                        reply += f"📋 **{event['summary']}**\n"
+                        reply += f"📋 *{event['summary']}*\n"
                         reply += f"   📅 {date_str}\n"
                         reply += f"   🕐 {time_str}\n\n"
                     except:
                         # Fallback to original format if parsing fails
-                        reply += f"📋 **{event['summary']}**\n"
+                        reply += f"📋 *{event['summary']}*\n"
                         reply += f"   🕐 {event['start']} → {event['end']}\n\n"
             
             if failed_events:
-                reply += f"❌ **Failed to Create ({len(failed_events)} events):**\n"
+                reply += f"❌ *Failed to Create ({len(failed_events)} events):*\n"
                 for event in failed_events:
                     reply += f"📋 {event['summary']}\n"
                     reply += f"   ⚠️ Error: {event['error']}\n\n"
@@ -2560,7 +2555,7 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
             success_count = len(created_events)
             failure_count = len(failed_events)
             
-            reply += f"📊 **Summary:**\n"
+            reply += f"📊 *Summary:*\n"
             reply += f"• Total: {total_events} events\n"
             reply += f"• Created: {success_count}\n"
             reply += f"• Failed: {failure_count}\n\n"
@@ -2573,23 +2568,23 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
             # Check if it's an authentication error
             if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
                 reply = (
-                    f"📅 **Calendar Authentication Required**\n\n"
+                    f"📅 *Calendar Authentication Required*\n\n"
                     f"I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
-                    f"**Events to create ({len(calendar_events)}):**\n"
+                    f"*Events to create ({len(calendar_events)}):*\n"
                 )
                 for event in calendar_events:
                     reply += f"📋 {event.get('summary', 'Untitled')}\n"
                 
-                reply += f"\n💡 **Solution:** Use 'setup my calendar' to check authentication status."
+                reply += f"\n💡 *Solution:* Use 'setup my calendar' to check authentication status."
             elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
                 reply = (
-                    f"📅 **Calendar Permissions Missing**\n\n"
+                    f"📅 *Calendar Permissions Missing*\n\n"
                     f"Your Google token doesn't include calendar permissions.\n\n"
-                    f"💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
+                    f"💡 *Solution:* Administrator needs to regenerate the OAuth token with calendar scope."
                 )
             else:
                 reply = (
-                    f"❌ **Error creating calendar events**\n\n"
+                    f"❌ *Error creating calendar events*\n\n"
                     f"There was an issue with Google Calendar API:\n"
                     f"{str(calendar_error)}\n\n"
                     f"Please try again or contact support."
@@ -2906,21 +2901,21 @@ async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: 
                     })
             
             # Generate summary report
-            reply = f"📅 **Bulk Calendar Deletion Summary**\n\n"
+            reply = f"📅 *Bulk Calendar Deletion Summary*\n\n"
             
             if deleted_events:
-                reply += f"✅ **Successfully Deleted ({len(deleted_events)} events):**\n"
+                reply += f"✅ *Successfully Deleted ({len(deleted_events)} events):*\n"
                 for event in deleted_events:
-                    reply += f"🗑️ **{event['title']}**\n"
+                    reply += f"🗑️ *{event['title']}*\n"
                     # Only show the matched criteria if it's different from the title
                     if event['identifier'] != event['title']:
                         reply += f"   🔍 Matched: {event['identifier']}\n"
                     reply += "\n"
             
             if failed_deletions:
-                reply += f"❌ **Failed to Delete ({len(failed_deletions)} targets):**\n"
+                reply += f"❌ *Failed to Delete ({len(failed_deletions)} targets):*\n"
                 for failure in failed_deletions:
-                    reply += f"🔍 **{failure['identifier']}**\n"
+                    reply += f"🔍 *{failure['identifier']}*\n"
                     reply += f"   ⚠️ {failure['error']}\n\n"
             
             # Add overall summary
@@ -2928,7 +2923,7 @@ async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: 
             success_count = len(deleted_events)
             failure_count = len(failed_deletions)
             
-            reply += f"📊 **Summary:**\n"
+            reply += f"📊 *Summary:*\n"
             reply += f"• Targets: {total_targets}\n"
             reply += f"• Deleted: {success_count} events\n"
             reply += f"• Failed: {failure_count}\n\n"
@@ -2936,30 +2931,30 @@ async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: 
             if success_count > 0:
                 reply += "🎉 Events removed from your Google Calendar!"
             elif failure_count > 0 and success_count == 0:
-                reply += "💡 **Tip:** Try being more specific with dates or use 'list my events' to see what's available to delete."
+                reply += "💡 *Tip:* Try being more specific with dates or use 'list my events' to see what's available to delete."
             
         except Exception as calendar_error:
             print(f"Google Calendar API error: {calendar_error}")
             # Check if it's an authentication error
             if "authorization" in str(calendar_error).lower() or "credentials" in str(calendar_error).lower():
                 reply = (
-                    f"📅 **Calendar Authentication Required**\n\n"
+                    f"📅 *Calendar Authentication Required*\n\n"
                     f"I couldn't access your Google Calendar. The token may be missing calendar permissions.\n\n"
-                    f"**Events to delete ({len(delete_targets)}):**\n"
+                    f"*Events to delete ({len(delete_targets)}):*\n"
                 )
                 for target in delete_targets:
                     reply += f"🗑️ {target}\n"
                 
-                reply += f"\n💡 **Solution:** Use 'setup my calendar' to check authentication status."
+                reply += f"\n💡 *Solution:* Use 'setup my calendar' to check authentication status."
             elif "insufficient" in str(calendar_error).lower() or "scope" in str(calendar_error).lower():
                 reply = (
-                    f"📅 **Calendar Permissions Missing**\n\n"
+                    f"📅 *Calendar Permissions Missing*\n\n"
                     f"Your Google token doesn't include calendar permissions.\n\n"
-                    f"💡 **Solution:** Administrator needs to regenerate the OAuth token with calendar scope."
+                    f"💡 *Solution:* Administrator needs to regenerate the OAuth token with calendar scope."
                 )
             else:
                 reply = (
-                    f"❌ **Error deleting calendar events**\n\n"
+                    f"❌ *Error deleting calendar events*\n\n"
                     f"There was an issue with Google Calendar API:\n"
                     f"{str(calendar_error)}\n\n"
                     f"Please try again or contact support."
