@@ -299,6 +299,36 @@ The WhatsApp AI Assistant is an intelligent chatbot that connects to your WhatsA
 - **Error Reduction:** Monitor accuracy improvements
 - **ROI Calculation:** Measure cost savings and productivity gains
 
+## Recent Improvements & Enhanced Natural Language Understanding
+
+### 🎯 **Smart Calendar Operations**
+The assistant now features significantly improved natural language understanding for calendar operations:
+
+**Enhanced Date Recognition:**
+- "Upcoming week" - Intelligently includes current week if early in week, or next week if late in week
+- "Next week", "this week", "coming week" - All properly interpreted
+- "Rest of the week", "next 7 days" - Flexible time period handling
+- Specific weekdays: "next Monday", "this Friday" - Accurate date calculation
+- Broad patterns: "all my meetings", "everything" - Smart scope detection
+
+**Improved User Experience:**
+- **Cleaner Messages**: Removed technical details like event IDs from user-facing messages
+- **Readable Dates**: "Mon, May 27" instead of "2025-05-27T09:00:00"
+- **Readable Times**: "09:00 AM - 11:00 AM" instead of ISO timestamps
+- **Concise Summaries**: Streamlined bulk operation reports
+- **Better Formatting**: Consistent use of emojis and bold text for clarity
+
+**Smart Bulk Operations:**
+- Create multiple events with natural language: "Create a meeting everyday for the next week"
+- Delete multiple events intelligently: "Delete all my meetings for the upcoming week"
+- Contextual understanding of time periods and user intent
+
+### 🧠 **Memory & Personalization**
+- **Hybrid Memory System**: Combines structured (Supabase) and semantic (Pinecone) memory
+- **Learning Preferences**: Adapts to user's communication style and preferences
+- **Context Awareness**: Remembers past interactions to provide better responses
+- **Task Tracking**: Automatically creates and tracks tasks from conversations
+
 ## Conclusion
 
 The WhatsApp AI Assistant represents a significant advancement in business automation and personal productivity. By leveraging natural language processing and intelligent automation, it transforms how professionals manage their daily tasks and communicate with clients and colleagues.

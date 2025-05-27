@@ -884,6 +884,11 @@ Examples of find_place intent (searching for places):
 - "Find best pizza in Downtown Dubai." → find_place (place_query: "best pizza", place_location: "Downtown Dubai")
 - "Show me vegan restaurants at 25.1972,55.2744" → find_place (place_query: "vegan restaurants", place_location: "25.1972,55.2744")
 - "Where can I find good coffee shops?" → find_place (place_query: "coffee shops", place_location: null)
+- "List Real Estate Firms Near me in Dubai" → find_place (place_query: "Real Estate Firms", place_location: "Dubai")
+- "Find gyms in Marina" → find_place (place_query: "gyms", place_location: "Marina")
+- "Show me restaurants near Business Bay" → find_place (place_query: "restaurants", place_location: "Business Bay")
+- "Best hotels in Dubai Marina" → find_place (place_query: "best hotels", place_location: "Dubai Marina")
+- "Find pharmacies near me in Jumeirah" → find_place (place_query: "pharmacies", place_location: "Jumeirah")
 
 Examples of calendar intents (using current date context):
 - "setup my calendar" or "connect calendar" → calendar_auth
@@ -2116,19 +2121,39 @@ async def handle_calendar_create_intent_optimized(data: dict, from_number: str):
                 event_link = event.get('htmlLink', 'No link available')
                 event_id = event.get('id')
                 
-                reply = (
-                    f"📅 **Calendar Event Created Successfully!**\n\n"
-                    f"📋 **Title:** {calendar_summary}\n"
-                    f"🕐 **Start:** {calendar_start}\n"
-                    f"🕐 **End:** {calendar_end}\n"
-                )
-                
-                if calendar_description:
-                    reply += f"📝 **Description:** {calendar_description}\n"
-                
-                reply += f"\n🔗 **Event Link:** {event_link}\n"
-                reply += f"🆔 **Event ID:** {event_id}\n\n"
-                reply += "✅ Event has been added to your Google Calendar!"
+                # Format datetime for better readability
+                try:
+                    start_dt = datetime.fromisoformat(calendar_start.replace('Z', '+00:00'))
+                    end_dt = datetime.fromisoformat(calendar_end.replace('Z', '+00:00'))
+                    
+                    # Format as readable date and time
+                    date_str = start_dt.strftime('%a, %b %d')
+                    time_str = f"{start_dt.strftime('%I:%M %p')} - {end_dt.strftime('%I:%M %p')}"
+                    
+                    reply = (
+                        f"📅 **Event Created Successfully!**\n\n"
+                        f"📋 **{calendar_summary}**\n"
+                        f"📅 {date_str}\n"
+                        f"🕐 {time_str}\n"
+                    )
+                    
+                    if calendar_description:
+                        reply += f"📝 {calendar_description}\n"
+                    
+                    reply += f"\n✅ Added to your Google Calendar!"
+                    
+                except:
+                    # Fallback to original format if parsing fails
+                    reply = (
+                        f"📅 **Event Created Successfully!**\n\n"
+                        f"📋 **{calendar_summary}**\n"
+                        f"🕐 {calendar_start} - {calendar_end}\n"
+                    )
+                    
+                    if calendar_description:
+                        reply += f"📝 {calendar_description}\n"
+                    
+                    reply += f"\n✅ Added to your Google Calendar!"
                 
             except Exception as calendar_error:
                 print(f"Google Calendar API error: {calendar_error}")
@@ -2306,8 +2331,8 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
                     )
                     
                     reply = (
-                        f"📅 **Calendar Event Deleted!**\n\n"
-                        f"🗑️ **Deleted Event ID:** {calendar_event_id}\n\n"
+                        f"📅 **Event Deleted Successfully!**\n\n"
+                        f"🗑️ **Event removed from calendar**\n\n"
                         "✅ Event has been removed from your Google Calendar!"
                     )
                 
@@ -2380,9 +2405,8 @@ async def handle_calendar_delete_intent_optimized(data: dict, from_number: str):
                         )
                         
                         reply = (
-                            f"📅 **Calendar Event Deleted!**\n\n"
-                            f"🗑️ **Deleted:** {event_title}\n"
-                            f"🆔 **Event ID:** {event_id}\n\n"
+                            f"📅 **Event Deleted Successfully!**\n\n"
+                            f"🗑️ **Event removed from calendar**\n\n"
                             "✅ Event has been removed from your Google Calendar!"
                         )
                     else:
@@ -2508,9 +2532,22 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
             if created_events:
                 reply += f"✅ **Successfully Created ({len(created_events)} events):**\n"
                 for event in created_events:
-                    reply += f"📋 {event['summary']}\n"
-                    reply += f"   🕐 {event['start']} → {event['end']}\n"
-                    reply += f"   🆔 {event['event_id']}\n\n"
+                    # Parse and format the datetime for better readability
+                    try:
+                        start_dt = datetime.fromisoformat(event['start'].replace('Z', '+00:00'))
+                        end_dt = datetime.fromisoformat(event['end'].replace('Z', '+00:00'))
+                        
+                        # Format as readable date and time
+                        date_str = start_dt.strftime('%a, %b %d')
+                        time_str = f"{start_dt.strftime('%I:%M %p')} - {end_dt.strftime('%I:%M %p')}"
+                        
+                        reply += f"📋 **{event['summary']}**\n"
+                        reply += f"   📅 {date_str}\n"
+                        reply += f"   🕐 {time_str}\n\n"
+                    except:
+                        # Fallback to original format if parsing fails
+                        reply += f"📋 **{event['summary']}**\n"
+                        reply += f"   🕐 {event['start']} → {event['end']}\n\n"
             
             if failed_events:
                 reply += f"❌ **Failed to Create ({len(failed_events)} events):**\n"
@@ -2523,13 +2560,13 @@ async def handle_calendar_bulk_create_intent_optimized(data: dict, from_number: 
             success_count = len(created_events)
             failure_count = len(failed_events)
             
-            reply += f"📊 **Overall Results:**\n"
-            reply += f"• Total requested: {total_events}\n"
-            reply += f"• Successfully created: {success_count}\n"
+            reply += f"📊 **Summary:**\n"
+            reply += f"• Total: {total_events} events\n"
+            reply += f"• Created: {success_count}\n"
             reply += f"• Failed: {failure_count}\n\n"
             
             if success_count > 0:
-                reply += "🎉 Events have been added to your Google Calendar!"
+                reply += "🎉 All events added to your Google Calendar!"
             
         except Exception as calendar_error:
             print(f"Google Calendar API error: {calendar_error}")
@@ -2874,28 +2911,30 @@ async def handle_calendar_bulk_delete_intent_optimized(data: dict, from_number: 
             if deleted_events:
                 reply += f"✅ **Successfully Deleted ({len(deleted_events)} events):**\n"
                 for event in deleted_events:
-                    reply += f"🗑️ {event['title']}\n"
-                    reply += f"   🔍 Matched: {event['identifier']}\n"
-                    reply += f"   🆔 ID: {event['event_id']}\n\n"
+                    reply += f"🗑️ **{event['title']}**\n"
+                    # Only show the matched criteria if it's different from the title
+                    if event['identifier'] != event['title']:
+                        reply += f"   🔍 Matched: {event['identifier']}\n"
+                    reply += "\n"
             
             if failed_deletions:
                 reply += f"❌ **Failed to Delete ({len(failed_deletions)} targets):**\n"
                 for failure in failed_deletions:
-                    reply += f"🔍 {failure['identifier']}\n"
-                    reply += f"   ⚠️ Error: {failure['error']}\n\n"
+                    reply += f"🔍 **{failure['identifier']}**\n"
+                    reply += f"   ⚠️ {failure['error']}\n\n"
             
             # Add overall summary
             total_targets = len(delete_targets)
             success_count = len(deleted_events)
             failure_count = len(failed_deletions)
             
-            reply += f"📊 **Overall Results:**\n"
-            reply += f"• Total targets: {total_targets}\n"
-            reply += f"• Successfully deleted: {success_count}\n"
+            reply += f"📊 **Summary:**\n"
+            reply += f"• Targets: {total_targets}\n"
+            reply += f"• Deleted: {success_count} events\n"
             reply += f"• Failed: {failure_count}\n\n"
             
             if success_count > 0:
-                reply += "🎉 Events have been removed from your Google Calendar!"
+                reply += "🎉 Events removed from your Google Calendar!"
             elif failure_count > 0 and success_count == 0:
                 reply += "💡 **Tip:** Try being more specific with dates or use 'list my events' to see what's available to delete."
             
