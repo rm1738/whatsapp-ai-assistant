@@ -541,48 +541,91 @@ async def find_places(query: str, location: str = None, radius: int = 5000) -> L
 # --- [HELPER FUNCTIONS: Smart Search with Tavily] ---
 def is_search_intent(message: str) -> bool:
     """
-    Detect if a message appears to be a search query based on patterns and keywords.
+    Enhanced search intent detection with better context awareness and accuracy
     """
     message_lower = message.lower().strip()
     
     # Skip if message is too short or looks like a command
-    if len(message_lower) < 5 or message_lower.startswith('/'):
+    if len(message_lower) < 3 or message_lower.startswith('/'):
         return False
     
-    # Skip if it's clearly an email, contact, or calendar intent
-    email_keywords = ['send email', 'email to', 'draft email', 'compose email']
-    contact_keywords = ['add contact', 'delete contact', 'update contact', 'contact info']
-    calendar_keywords = ['create meeting', 'schedule', 'calendar', 'appointment', 'book']
-    place_keywords = ['find places', 'restaurants near', 'coffee shops', 'best pizza in']
+    # Enhanced exclusion patterns - be more specific about what's NOT a search
+    exclusion_patterns = [
+        # Email intents
+        r'\b(send|draft|compose|email)\s+(email|to|an email)\b',
+        r'\b(email\s+to|email\s+about)\b',
+        
+        # Contact intents
+        r'\b(add|save|create)\s+(contact|new contact)\b',
+        r'\b(delete|remove)\s+(contact|from contacts)\b',
+        r'\b(update|change)\s+.*\s+(email|phone|contact)\b',
+        r'\b(what\'s|get|show)\s+.*\s+(email|phone|contact)\b',
+        r'\b(list|show)\s+(all\s+)?(contacts|my contacts)\b',
+        
+        # Calendar intents
+        r'\b(create|schedule|book|add)\s+(meeting|appointment|event|calendar)\b',
+        r'\b(delete|cancel|remove)\s+(meeting|appointment|event)\b',
+        r'\b(list|show)\s+(my\s+)?(events|calendar|meetings)\b',
+        r'\b(setup|connect)\s+(my\s+)?calendar\b',
+        
+        # Place intents
+        r'\b(find|search for|locate)\s+(places|restaurants|coffee shops|gyms)\b',
+        r'\b(best|top)\s+.*\s+(near me|in\s+\w+|restaurants|hotels)\b',
+        r'\b(where\s+can\s+i\s+find|show\s+me)\s+.*\s+(near|in)\b',
+        
+        # Direct commands
+        r'^\s*(help|hi|hello|thanks|thank you|ok|okay|yes|no)\s*$',
+        r'^\s*(setup|connect|list|show|create|delete|update|add|remove)\s+',
+    ]
     
-    if any(keyword in message_lower for keyword in email_keywords + contact_keywords + calendar_keywords + place_keywords):
-        return False
+    # Check exclusion patterns first
+    for pattern in exclusion_patterns:
+        if re.search(pattern, message_lower):
+            return False
     
-    # Search intent patterns
+    # Enhanced search intent patterns with better specificity
     search_patterns = [
-        # Question words
-        r'\b(what|how|why|when|where|which|who)\b.*\?',
-        r'\b(what|how|why|when|where|which|who)\s+(is|are|was|were|do|does|did|can|could|should|would)\b',
+        # Question words with search context
+        r'\b(what|how|why|when|where|which|who)\s+(is|are|was|were|do|does|did|can|could|should|would|will)\s+.*\?',
+        r'\b(what|how|why|when|where|which|who)\s+.*\s+(about|regarding|concerning)\b',
         
-        # Search phrases
-        r'\b(find|search|look\s+for|tell\s+me\s+about|explain|show\s+me)\b',
-        r'\b(best|top|latest|newest|recent|current)\b.*\b(in|for|about|on)\b',
-        r'\b(how\s+to|ways\s+to|steps\s+to)\b',
-        r'\b(what\s+is|what\s+are|what\'s)\b',
-        r'\b(learn\s+about|information\s+about|details\s+about)\b',
+        # Information seeking patterns
+        r'\b(tell\s+me\s+about|explain|describe|define)\s+\w+',
+        r'\b(information\s+about|details\s+about|facts\s+about)\b',
+        r'\b(learn\s+about|understand|know\s+about)\b',
         
-        # Comparison and recommendation patterns
-        r'\b(compare|vs|versus|difference\s+between)\b',
-        r'\b(recommend|suggest|advice)\b',
-        r'\b(pros\s+and\s+cons|advantages|disadvantages)\b',
+        # Search and discovery patterns
+        r'\b(search\s+for|look\s+up|find\s+out\s+about)\s+\w+',
+        r'\b(research|investigate|explore)\s+\w+',
         
-        # Technology and trends
-        r'\b(latest\s+in|trends\s+in|news\s+about|updates\s+on)\b',
-        r'\b(technology|tech|AI|artificial\s+intelligence|machine\s+learning)\b',
+        # Comparison and analysis
+        r'\b(compare|vs|versus|difference\s+between)\s+\w+',
+        r'\b(pros\s+and\s+cons|advantages\s+and\s+disadvantages)\s+of\b',
+        r'\b(better|best|worst|comparison)\s+.*\s+(vs|versus|compared to)\b',
         
-        # General knowledge queries
-        r'\b(definition\s+of|meaning\s+of|explain)\b',
-        r'\b(guide\s+to|tutorial\s+on|instructions\s+for)\b'
+        # How-to and instructional
+        r'\b(how\s+to|ways\s+to|steps\s+to|guide\s+to)\s+\w+',
+        r'\b(tutorial\s+on|instructions\s+for|method\s+to)\b',
+        
+        # Current events and trends
+        r'\b(latest|newest|recent|current|today\'s)\s+.*\s+(news|trends|updates|developments)\b',
+        r'\b(what\'s\s+new|what\'s\s+happening)\s+(in|with|about)\b',
+        
+        # Technology and specific domains
+        r'\b(AI|artificial\s+intelligence|machine\s+learning|blockchain|crypto)\b.*\b(trends|news|updates|developments)\b',
+        r'\b(technology|tech|software|hardware)\s+.*\s+(review|comparison|guide)\b',
+        
+        # General knowledge and definitions
+        r'\b(what\s+is|what\s+are|what\'s)\s+\w+.*\?',
+        r'\b(definition\s+of|meaning\s+of|explain\s+what\s+is)\b',
+        
+        # Recommendation seeking
+        r'\b(recommend|suggest|advice\s+on)\s+\w+',
+        r'\b(best|top|good)\s+.*\s+(for|to|in)\s+\w+',
+        
+        # Problem solving
+        r'\b(solve|fix|troubleshoot|help\s+with)\s+\w+',
+        r'\b(problem\s+with|issue\s+with|error\s+with)\b',
     ]
     
     # Check if message matches any search pattern
@@ -590,35 +633,60 @@ def is_search_intent(message: str) -> bool:
         if re.search(pattern, message_lower):
             return True
     
-    # Check for question-like structure
-    if message_lower.endswith('?'):
+    # Question-like structure (but not simple yes/no questions)
+    if message_lower.endswith('?') and len(message_lower.split()) > 3:
+        # Exclude simple questions
+        simple_questions = [
+            r'^\s*(are\s+you|can\s+you|do\s+you|will\s+you|is\s+it|was\s+it)\s+.*\?',
+            r'^\s*(yes\s+or\s+no|true\s+or\s+false)\s*\?',
+        ]
+        
+        is_simple = any(re.search(pattern, message_lower) for pattern in simple_questions)
+        if not is_simple:
+            return True
+    
+    # Imperative search commands (but be more specific)
+    imperative_starters = ['explain', 'describe', 'research', 'investigate', 'analyze']
+    first_word = message_lower.split()[0] if message_lower.split() else ""
+    if first_word in imperative_starters and len(message_lower.split()) > 2:
         return True
     
-    # Check for imperative search commands
-    imperative_starters = ['find', 'search', 'look', 'show', 'tell', 'explain', 'help', 'get']
-    first_word = message_lower.split()[0] if message_lower.split() else ""
-    if first_word in imperative_starters:
-        return True
+    # Context-based detection for ambiguous cases
+    context_indicators = [
+        r'\b(because|since|due\s+to|as\s+a\s+result)\b',  # Explanatory context
+        r'\b(according\s+to|based\s+on|research\s+shows)\b',  # Information seeking
+        r'\b(statistics|data|facts|evidence)\b',  # Data seeking
+    ]
+    
+    for pattern in context_indicators:
+        if re.search(pattern, message_lower):
+            return True
     
     return False
 
 # PERFORMANCE OPTIMIZATION: Optimized search with parallel execution
-async def handle_search_query_optimized(message: str) -> str:
+async def handle_search_query_optimized(message: str, whatsapp_number: str = None) -> str:
     """
-    OPTIMIZED: Handle search query using Tavily API with parallel execution and caching
+    OPTIMIZED: Handle search query using Tavily API with enhanced query refinement and context
     """
     if not TAVILY_API_KEY:
         return "❌ Search functionality is not available. Please contact administrator."
     
     try:
-        # Prepare Tavily API request
+        # ENHANCEMENT: Refine the search query using context and LLM
+        enhanced_query = await enhance_search_query_with_context(
+            original_query=message,
+            whatsapp_number=whatsapp_number
+        )
+        
+        # Prepare Tavily API request with enhanced query
         headers = {
             "Content-Type": "application/json"
         }
         
         payload = {
             "api_key": TAVILY_API_KEY,
-            "query": message,
+            "query": enhanced_query,
             "search_depth": "basic",
             "include_answer": True,
             "include_images": False,
@@ -635,13 +703,22 @@ async def handle_search_query_optimized(message: str) -> str:
         results = data.get("results", [])
         answer = data.get("answer", "")
         
+        # ENHANCEMENT: Analyze search relevance for continuous improvement
+        asyncio.create_task(analyze_search_relevance(
+            original_query=message,
+            enhanced_query=enhanced_query,
+            search_results=data,
+            whatsapp_number=whatsapp_number
+        ))  # Fire and forget for performance
+        
         if not results and not answer:
             return "🔍 Couldn't find anything useful right now. Try rephrasing your search or being more specific."
         
         # PERFORMANCE: Parallel LLM summarization with timeout
         try:
-            # Prepare content for LLM summarization
-            content_for_llm = f"Search Query: {message}\n\n"
+            # Prepare content for LLM summarization with enhanced context
+            content_for_llm = f"Original Query: {message}\n"
+            content_for_llm += f"Enhanced Query: {enhanced_query}\n\n"
             
             if answer:
                 content_for_llm += f"AI Answer: {answer}\n\n"
@@ -653,21 +730,23 @@ async def handle_search_query_optimized(message: str) -> str:
                 content = result.get("content", "")
                 content_for_llm += f"{i}. {title}\n   URL: {url}\n   Content: {content}\n\n"
             
-            # Use OpenAI to summarize and format for WhatsApp
+            # Enhanced summarization prompt with context awareness
             summarization_prompt = f"""
 You are helping to summarize web search results for WhatsApp. The response MUST be under 1500 characters total.
 
-Search Query: "{message}"
+Original Query: "{message}"
+Enhanced Query: "{enhanced_query}"
 
 Raw Search Data:
 {content_for_llm}
 
 Please create a concise, informative summary that:
-1. Starts with a brief answer to the user's question
+1. Starts with a brief answer to the user's original question
 2. Lists 2-3 key points from the search results
 3. Includes 1-2 relevant URLs for more info
 4. Uses emojis appropriately
 5. Stays under 1500 characters total
+6. If the enhanced query found more relevant results, mention that briefly
 
 Format like this:
 🔍 *[Brief Answer]*
@@ -687,7 +766,7 @@ Format like this:
                 return openai.chat.completions.create(
                     model="gpt-4",
                     messages=[
-                        {"role": "system", "content": "You are an expert at summarizing web search results for mobile messaging. Keep responses concise, informative, and under 1500 characters."},
+                        {"role": "system", "content": "You are an expert at summarizing web search results for mobile messaging. Keep responses concise, informative, and under 1500 characters. Focus on the most relevant information for the user's original query."},
                         {"role": "user", "content": summarization_prompt}
                     ],
                     max_tokens=500,
@@ -716,6 +795,9 @@ Format like this:
         
         # PERFORMANCE: Fast fallback formatting
         fallback_response = f"🔍 *Search Results for:* {message}\n\n"
+        
+        if enhanced_query != message:
+            fallback_response += f"💡 *Enhanced search:* {enhanced_query}\n\n"
         
         if answer:
             # Truncate answer if too long
@@ -883,6 +965,12 @@ Examples of memory_query intent:
 - "Show me my recent activity" → memory_query (memory_query: "all")
 - "What did I do earlier?" → memory_query (memory_query: "all")
 
+Examples of search_insights intent:
+- "Show me my search insights" → search_insights
+- "How are my searches performing?" → search_insights
+- "Search statistics" → search_insights
+- "My search analytics" → search_insights
+
 Examples of send_email intent:
 - "Send an email to John about the meeting"
 - "Email Sarah saying I'll be late"
@@ -913,7 +1001,7 @@ Examples of list_contacts intent:
 
 Respond ONLY in this JSON format:
 {{{{
-  "intent": "send_email" or "add_contact" or "lookup_contact" or "list_contacts" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_bulk_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "calendar_bulk_delete" or "find_place" or "place_details" or "web_search" or "memory_query" or "other",
+  "intent": "send_email" or "add_contact" or "lookup_contact" or "list_contacts" or "update_contact" or "delete_contact" or "calendar_auth" or "calendar_create" or "calendar_bulk_create" or "calendar_list" or "calendar_update" or "calendar_delete" or "calendar_bulk_delete" or "find_place" or "place_details" or "web_search" or "memory_query" or "search_insights" or "other",
   "recipient_email": "...",
   "recipient_name": "...",
   "subject": "...",
@@ -939,7 +1027,8 @@ Respond ONLY in this JSON format:
   "place_location": "...",
   "place_detail_type": "...",
   "search_query": "...",
-  "memory_query": "..."
+  "memory_query": "...",
+  "search_insights": "..."
 }}}}
 If you cannot extract all required fields, set intent to "other" and leave the other fields empty.
 '''
@@ -1560,7 +1649,7 @@ async def process_message_background_optimized(from_number: str, body: str, num_
             if is_search_intent(body):
                 try:
                     print(f"Detected search intent for message: {body}")
-                    search_results = await handle_search_query_optimized(body)
+                    search_results = await handle_search_query_optimized(body, whatsapp_number=from_number)
                     await send_whatsapp_message(from_number, search_results)
                     return
                 except Exception as e:
@@ -1615,6 +1704,9 @@ async def process_message_background_optimized(from_number: str, body: str, num_
             return
         elif data and data.get("intent") == "list_contacts":
             await handle_list_contacts_intent_optimized(data, from_number)
+            return
+        elif data and data.get("intent") == "search_insights":
+            await handle_search_insights_intent_optimized(data, from_number)
             return
         # ... other intents would be handled similarly
         
@@ -1831,7 +1923,7 @@ async def handle_place_intent_optimized(data: dict, from_number: str):
             await send_whatsapp_message(from_number, f"Sorry, there was an error getting place details: {str(e)}")
 
 async def handle_web_search_intent_optimized(data: dict, from_number: str):
-    """OPTIMIZED: Handle web search with timeout"""
+    """OPTIMIZED: Handle web search with enhanced context and timeout"""
     search_query = data.get("search_query")
     
     if not search_query:
@@ -1839,8 +1931,8 @@ async def handle_web_search_intent_optimized(data: dict, from_number: str):
         return
     
     try:
-        # Perform the search using Tavily API
-        search_results = await handle_search_query_optimized(search_query)
+        # Perform the search using enhanced Tavily API with context
+        search_results = await handle_search_query_optimized(search_query, whatsapp_number=from_number)
         await send_whatsapp_message(from_number, search_results)
         
     except Exception as e:
@@ -3328,6 +3420,258 @@ async def health_check():
         "cache_stats": cache_stats,
         "memory_manager": "available" if memory_manager else "unavailable"
     }
+
+async def analyze_search_relevance(original_query: str, enhanced_query: str, search_results: dict, whatsapp_number: str = None) -> dict:
+    """
+    Analyze search result relevance and store feedback for continuous improvement
+    """
+    try:
+        analysis = {
+            "original_query": original_query,
+            "enhanced_query": enhanced_query,
+            "query_enhancement_applied": enhanced_query != original_query,
+            "results_count": len(search_results.get("results", [])),
+            "has_answer": bool(search_results.get("answer")),
+            "timestamp": datetime.now().isoformat(),
+            "relevance_score": 0.0
+        }
+        
+        # Basic relevance scoring based on result quality
+        results = search_results.get("results", [])
+        if results:
+            # Score based on title relevance to original query
+            title_relevance_scores = []
+            for result in results[:3]:  # Check top 3 results
+                title = result.get("title", "").lower()
+                query_words = original_query.lower().split()
+                
+                # Simple word overlap scoring
+                overlap_count = sum(1 for word in query_words if word in title)
+                relevance = overlap_count / len(query_words) if query_words else 0
+                title_relevance_scores.append(relevance)
+            
+            analysis["relevance_score"] = sum(title_relevance_scores) / len(title_relevance_scores)
+        
+        # Store analysis in memory if available
+        if memory_manager and whatsapp_number:
+            try:
+                user_id = await memory_manager.get_user_id(whatsapp_number)
+                await memory_manager.supabase_memory.store_conversation(
+                    user_id=user_id,
+                    message_text=f"Search analysis: {original_query}",
+                    message_type="search_analysis",
+                    intent="search_analysis",
+                    metadata=analysis
+                )
+            except Exception as e:
+                print(f"Error storing search analysis: {e}")
+        
+        return analysis
+        
+    except Exception as e:
+        print(f"Error analyzing search relevance: {e}")
+        return {}
+
+async def enhance_search_query_with_context(original_query: str, user_context: str = "", whatsapp_number: str = None) -> str:
+    """
+    Enhanced search query refinement using LLM and user context
+    """
+    try:
+        # Get user's memory context if available
+        memory_context = ""
+        if memory_manager and whatsapp_number:
+            try:
+                user_id = await memory_manager.get_user_id(whatsapp_number)
+                
+                # Get user preferences and recent search history
+                preferences_task = asyncio.create_task(
+                    memory_manager.supabase_memory.get_user_preferences(user_id)
+                )
+                
+                recent_searches_task = asyncio.create_task(
+                    memory_manager.supabase_memory.get_recent_conversations(user_id, limit=10)
+                )
+                
+                try:
+                    preferences, recent_conversations = await asyncio.gather(
+                        asyncio.wait_for(preferences_task, timeout=5.0),
+                        asyncio.wait_for(recent_searches_task, timeout=5.0),
+                        return_exceptions=True
+                    )
+                    
+                    # Build memory context
+                    context_parts = []
+                    
+                    if not isinstance(preferences, Exception) and preferences:
+                        context_parts.append(f"User preferences: {preferences}")
+                    
+                    if not isinstance(recent_conversations, Exception) and recent_conversations:
+                        # Filter for search-related conversations
+                        search_conversations = [
+                            conv for conv in recent_conversations 
+                            if conv.get('intent') in ['web_search', 'find_place']
+                        ]
+                        
+                        if search_conversations:
+                            recent_searches = [conv.get('message_text', '') for conv in search_conversations[:3]]
+                            context_parts.append(f"Recent searches: {', '.join(recent_searches)}")
+                    
+                    if context_parts:
+                        memory_context = " | ".join(context_parts)
+                        
+                except Exception as e:
+                    print(f"Error gathering memory context: {e}")
+            except Exception as e:
+                print(f"Error accessing memory manager: {e}")
+        
+        # Enhanced query refinement prompt
+        refinement_prompt = f"""
+You are an expert search query optimizer. Your task is to improve search queries to get the most relevant and useful results.
+
+Original Query: "{original_query}"
+User Context: {user_context if user_context else "No additional context"}
+Memory Context: {memory_context if memory_context else "No memory context"}
+
+Please optimize this search query by:
+1. Adding relevant keywords that would improve search results
+2. Making the query more specific and targeted
+3. Considering the user's context and preferences
+4. Ensuring the query is clear and unambiguous
+5. Adding location context if relevant (user is in Dubai, UAE)
+
+Guidelines:
+- Keep the core intent of the original query
+- Add clarifying terms if the query is vague
+- Include current year (2024) for time-sensitive queries
+- Add "Dubai" or "UAE" context for local queries
+- Make technical queries more specific
+- For "best" or "top" queries, add current year context
+
+Return ONLY the optimized search query, nothing else.
+
+Examples:
+- "best restaurants" → "best restaurants Dubai 2024 reviews"
+- "AI trends" → "latest AI technology trends 2024"
+- "how to invest" → "how to invest money beginner guide 2024"
+- "weather" → "Dubai weather forecast today"
+- "news" → "latest news today 2024"
+
+Optimized Query:"""
+        
+        # Use LLM to refine the query
+        def llm_refine():
+            return openai.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert search query optimizer. Return only the optimized search query, no explanations or additional text."},
+                    {"role": "user", "content": refinement_prompt}
+                ],
+                max_tokens=100,
+                temperature=0.3
+            )
+        
+        response = await asyncio.wait_for(
+            asyncio.get_event_loop().run_in_executor(thread_pool, llm_refine),
+            timeout=10.0
+        )
+        
+        enhanced_query = response.choices[0].message.content.strip()
+        
+        # Validate the enhanced query
+        if len(enhanced_query) > 200:
+            enhanced_query = enhanced_query[:200]
+        
+        if not enhanced_query or enhanced_query.lower() == original_query.lower():
+            return original_query
+        
+        print(f"🔍 Query enhanced: '{original_query}' → '{enhanced_query}'")
+        return enhanced_query
+        
+    except Exception as e:
+        print(f"Query enhancement failed: {e}")
+        return original_query
+
+async def get_search_insights(whatsapp_number: str) -> str:
+    """
+    Get search insights and statistics for the user
+    """
+    try:
+        if not memory_manager:
+            return "❌ Search insights not available - memory system not initialized."
+        
+        user_id = await memory_manager.get_user_id(whatsapp_number)
+        
+        # Get recent search analyses
+        recent_conversations = await memory_manager.supabase_memory.get_recent_conversations(
+            user_id, limit=20
+        )
+        
+        search_analyses = [
+            conv for conv in recent_conversations 
+            if conv.get('intent') == 'search_analysis'
+        ]
+        
+        if not search_analyses:
+            return "📊 *Search Insights*\n\n❌ No recent search data available.\n\n💡 Try performing some searches first!"
+        
+        # Calculate statistics
+        total_searches = len(search_analyses)
+        enhanced_searches = sum(1 for analysis in search_analyses 
+                              if analysis.get('metadata', {}).get('query_enhancement_applied', False))
+        
+        avg_relevance = sum(analysis.get('metadata', {}).get('relevance_score', 0) 
+                          for analysis in search_analyses) / total_searches
+        
+        searches_with_answers = sum(1 for analysis in search_analyses 
+                                  if analysis.get('metadata', {}).get('has_answer', False))
+        
+        # Recent search topics
+        recent_queries = [
+            analysis.get('metadata', {}).get('original_query', 'Unknown')
+            for analysis in search_analyses[:5]
+        ]
+        
+        insights = f"📊 *Your Search Insights*\n\n"
+        insights += f"🔍 *Total searches:* {total_searches}\n"
+        insights += f"⚡ *Query enhancements:* {enhanced_searches}/{total_searches} ({enhanced_searches/total_searches*100:.1f}%)\n"
+        insights += f"🎯 *Average relevance:* {avg_relevance:.1f}/1.0\n"
+        insights += f"💡 *Searches with AI answers:* {searches_with_answers}/{total_searches} ({searches_with_answers/total_searches*100:.1f}%)\n\n"
+        
+        insights += f"📋 *Recent search topics:*\n"
+        for i, query in enumerate(recent_queries, 1):
+            if len(query) > 50:
+                query = query[:50] + "..."
+            insights += f"{i}. {query}\n"
+        
+        insights += f"\n💡 *Tips:*\n"
+        insights += f"• Be specific in your queries for better results\n"
+        insights += f"• I automatically enhance vague queries with context\n"
+        insights += f"• Your search history helps me understand your preferences"
+        
+        return insights
+        
+    except Exception as e:
+        print(f"Error getting search insights: {e}")
+        return "❌ Error retrieving search insights. Please try again later."
+
+@app.get("/search/insights/{whatsapp_number}")
+async def get_user_search_insights(whatsapp_number: str):
+    """Get search insights and statistics for a user"""
+    try:
+        insights = await get_search_insights(whatsapp_number)
+        return {"insights": insights}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get search insights: {str(e)}")
+
+async def handle_search_insights_intent_optimized(data: dict, from_number: str):
+    """OPTIMIZED: Handle search insights requests"""
+    try:
+        insights = await get_search_insights(from_number)
+        await send_whatsapp_message(from_number, insights)
+        
+    except Exception as e:
+        print(f"Search insights error: {e}")
+        await send_whatsapp_message(from_number, "❌ Error retrieving search insights. Please try again later.")
 
 if __name__ == "__main__":
     import uvicorn
